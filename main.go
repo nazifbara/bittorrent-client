@@ -44,7 +44,7 @@ func openTorrent(filePath string) (Torrent, error) {
 
 	value, err := bencode.Decode(f)
 	if err != nil {
-		return Torrent{}, err
+		return Torrent{}, errors.New("malformed torrent bencode")
 	}
 	root := value.(map[string]any)
 	return Torrent{
