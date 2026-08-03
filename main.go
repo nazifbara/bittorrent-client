@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 
@@ -12,15 +14,20 @@ type Torrent struct {
 }
 
 func main() {
-	code, err := run()
+	torrentPath := flag.String("f", "", "path to the torrent file")
+	flag.Parse()
+	code, err := run(*torrentPath)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
 	os.Exit(code)
 }
 
-func run() (int, error) {
-	torrent, err := openTorrent("ikigai.torrent")
+func run(torrentPath string) (int, error) {
+	if torrentPath == "" {
+		return 1, errors.New("path to torrent file not provided")
+	}
+	torrent, err := openTorrent(torrentPath)
 	if err != nil {
 		return 1, err
 	}
@@ -29,18 +36,18 @@ func run() (int, error) {
 }
 
 func openTorrent(filePath string) (Torrent, error) {
-	torrent := Torrent{}
 	f, err := os.Open(filePath)
 	if err != nil {
-		return torrent, err
+		return Torrent{}, err
 	}
 	defer f.Close()
 
 	value, err := bencode.Decode(f)
 	if err != nil {
-		return torrent, err
+		return Torrent{}, err
 	}
 	root := value.(map[string]any)
-	torrent.Announce = root["announce"].(string)
-	return torrent, nil
+	return Torrent{
+		Announce: root["announce"].(string),
+	}, nil
 }
