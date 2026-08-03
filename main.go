@@ -4,6 +4,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
+	"net"
+	"net/url"
 	"os"
 
 	"github.com/jackpal/bencode-go"
@@ -31,8 +34,37 @@ func run(torrentPath string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	fmt.Println(torrent.Announce)
+	conn, err := createUDPConn(torrent)
+	if err != nil {
+		return 1, err
+	}
+	defer conn.Close()
+	log.Printf("Tracker has been reached!")
 	return 0, nil
+}
+
+func createUDPConn(torrent Torrent) (*net.UDPConn, error) {
+	parsedURL, err := url.Parse(torrent.Announce)
+	if err != nil {
+		return &net.UDPConn{}, err
+	}
+	if parsedURL.Scheme != "udp" {
+		return nil, fmt.Errorf("unsupported annouce scheme: %s", parsedURL.Scheme)
+	}
+	host := parsedURL.Host
+	port := parsedURL.Port()
+	addr, err := net.ResolveUDPAddr("udp4", net.JoinHostPort(host, port))
+	if err != nil {
+		addr, err = net.ResolveUDPAddr("udp4", "open.stealth.si:80")
+	}
+	if err != nil {
+		return &net.UDPConn{}, err
+	}
+	conn, err := net.DialUDP("udp4", nil, addr)
+	if err != nil {
+		return &net.UDPConn{}, err
+	}
+	return conn, nil
 }
 
 func openTorrent(filePath string) (Torrent, error) {
