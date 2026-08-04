@@ -13,7 +13,7 @@ import (
 )
 
 type Torrent struct {
-	Announce string
+	Announce string `bencode:"announce"`
 }
 
 func main() {
@@ -49,7 +49,7 @@ func createUDPConn(torrent Torrent) (*net.UDPConn, error) {
 		return &net.UDPConn{}, err
 	}
 	if parsedURL.Scheme != "udp" {
-		return nil, fmt.Errorf("unsupported annouce scheme: %s", parsedURL.Scheme)
+		return nil, fmt.Errorf("unsupported announce scheme: %s", parsedURL.Scheme)
 	}
 	host := parsedURL.Host
 	port := parsedURL.Port()
@@ -73,13 +73,10 @@ func openTorrent(filePath string) (Torrent, error) {
 		return Torrent{}, err
 	}
 	defer f.Close()
-
-	value, err := bencode.Decode(f)
+	var torrent Torrent
+	err = bencode.Unmarshal(f, &torrent)
 	if err != nil {
 		return Torrent{}, errors.New("malformed torrent bencode")
 	}
-	root := value.(map[string]any)
-	return Torrent{
-		Announce: root["announce"].(string),
-	}, nil
+	return torrent, nil
 }
