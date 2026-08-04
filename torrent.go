@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha1"
 	"errors"
 	"fmt"
 	"net"
@@ -27,6 +29,18 @@ type BencodeTorrent struct {
 	CreatedBy    string     `bencode:"created by,omitempty"`
 	CreationDate int64      `bencode:"creation date,omitempty"`
 	Info         InfoDict   `bencode:"info"`
+}
+
+func (bt BencodeTorrent) ToTorrent() (Torrent, error) {
+	var buf bytes.Buffer
+	if err := bencode.Marshal(&buf, bt.Info); err != nil {
+		return Torrent{}, err
+	}
+	infoHash := sha1.Sum(buf.Bytes())
+	return Torrent{
+		Announce: bt.Announce,
+		InfoHash: infoHash,
+	}, nil
 }
 
 // InfoDict represents the "info" dictionary within the torrent metainfo.
@@ -80,6 +94,7 @@ func openTorrent(filePath string) (*Torrent, error) {
 	if err != nil {
 		return &Torrent{}, errors.New("malformed torrent bencode")
 	}
-	fmt.Println(bt.AnnounceList)
-	return &Torrent{Announce: bt.Announce}, nil
+	fmt.Println(bt.Info.Pieces)
+	torrent, err := bt.ToTorrent()
+	return &torrent, nil
 }
