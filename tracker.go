@@ -28,6 +28,9 @@ func requestConn(conn *net.UDPConn) (ConnResp, error) {
 		return ConnResp{}, err
 	}
 	n, err := conn.Read(respBuffer)
+	if n < 16 {
+		return ConnResp{}, fmt.Errorf("tracker response is too short: %d", n)
+	}
 	if err != nil {
 		return ConnResp{}, err
 	}
