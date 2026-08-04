@@ -34,7 +34,6 @@ func requestConn(conn *net.UDPConn) (ConnResp, error) {
 	if n < 16 {
 		return ConnResp{}, fmt.Errorf("tracker response is too short: %d", n)
 	}
-
 	return parseConnRes(respBuffer[:n]), nil
 }
 

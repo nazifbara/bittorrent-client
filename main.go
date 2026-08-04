@@ -4,17 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net"
-	"net/url"
 	"os"
-	"time"
-
-	"github.com/jackpal/bencode-go"
 )
-
-type Torrent struct {
-	Announce string `bencode:"announce"`
-}
 
 func main() {
 	torrentPath := flag.String("f", "", "path to the torrent file")
@@ -42,43 +33,4 @@ func run(torrentPath string) (int, error) {
 
 	getPeers(conn)
 	return 0, nil
-}
-
-func createUDPConn(torrent Torrent) (*net.UDPConn, error) {
-	parsedURL, err := url.Parse(torrent.Announce)
-	if err != nil {
-		return &net.UDPConn{}, err
-	}
-	if parsedURL.Scheme != "udp" {
-		return nil, fmt.Errorf("unsupported announce scheme: %s", parsedURL.Scheme)
-	}
-	host := parsedURL.Host
-	port := parsedURL.Port()
-	addr, err := net.ResolveUDPAddr("udp4", net.JoinHostPort(host, port))
-	if err != nil {
-		addr, err = net.ResolveUDPAddr("udp4", "open.stealth.si:80")
-	}
-	if err != nil {
-		return &net.UDPConn{}, err
-	}
-	conn, err := net.DialUDP("udp4", nil, addr)
-	if err != nil {
-		return &net.UDPConn{}, err
-	}
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	return conn, nil
-}
-
-func openTorrent(filePath string) (Torrent, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return Torrent{}, err
-	}
-	defer f.Close()
-	var torrent Torrent
-	err = bencode.Unmarshal(f, &torrent)
-	if err != nil {
-		return Torrent{}, errors.New("malformed torrent bencode")
-	}
-	return torrent, nil
 }
