@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/jackpal/bencode-go"
 )
@@ -64,6 +65,7 @@ func createUDPConn(torrent Torrent) (*net.UDPConn, error) {
 	if err != nil {
 		return &net.UDPConn{}, err
 	}
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	return conn, nil
 }
 
