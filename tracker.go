@@ -52,6 +52,6 @@ func parseConnRes(resp []byte) ConnResp {
 	return ConnResp{
 		Action:        binary.BigEndian.Uint32(resp[0:4]),
 		TransactionID: binary.BigEndian.Uint32(resp[4:8]),
-		ConnectionID:  binary.BigEndian.Uint64(resp[8:]),
+		ConnectionID:  binary.BigEndian.Uint64(resp[8:16]),
 	}
 }
