@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"net/url"
 	"os"
@@ -39,7 +38,8 @@ func run(torrentPath string) (int, error) {
 		return 1, err
 	}
 	defer conn.Close()
-	log.Printf("Tracker has been reached!")
+
+	getPeers(conn)
 	return 0, nil
 }
 
