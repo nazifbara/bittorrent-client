@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	mathRand "math/rand"
+	"math/rand"
 	"net"
 )
 
@@ -23,15 +23,17 @@ type AnnounceResp struct {
 }
 
 func (c Client) GetPeers() ([]net.UDPAddr, error) {
-	connResp, err := c.RequestConn()
-	if err != nil {
-		return []net.UDPAddr{}, err
-	}
-	peers, err := c.Announce(connResp)
-	if err != nil {
-		return []net.UDPAddr{}, err
-	}
-	return peers, nil
+	return retry(20, c.TrackerConn, func(conn *net.UDPConn) ([]net.UDPAddr, error) {
+		connResp, err := c.RequestConn()
+		if err != nil {
+			return []net.UDPAddr{}, err
+		}
+		peers, err := c.Announce(connResp)
+		if err != nil {
+			return []net.UDPAddr{}, err
+		}
+		return peers, nil
+	})
 }
 
 func (c Client) Announce(connResp ConnResp) ([]net.UDPAddr, error) {
@@ -69,7 +71,7 @@ func (c Client) BuildAnnounceReq(connectID []byte) []byte {
 	// action 1 for announcement
 	b = binary.BigEndian.AppendUint32(b, 1)
 	// transaction id
-	b = binary.BigEndian.AppendUint32(b, mathRand.Uint32())
+	b = binary.BigEndian.AppendUint32(b, rand.Uint32())
 	// infohash
 	b = append(b, c.Torrent.InfoHash[:]...)
 	// peer id
@@ -85,7 +87,7 @@ func (c Client) BuildAnnounceReq(connectID []byte) []byte {
 	// ip address 0 default
 	b = binary.BigEndian.AppendUint32(b, 0)
 	// key
-	b = binary.BigEndian.AppendUint32(b, mathRand.Uint32())
+	b = binary.BigEndian.AppendUint32(b, rand.Uint32())
 	// num want
 	b = binary.BigEndian.AppendUint32(b, uint32(0xFFFFFFFF))
 	// port
@@ -100,7 +102,7 @@ func buildConnReq() []byte {
 	// connect action
 	b = binary.BigEndian.AppendUint32(b, 0)
 	// transaction id
-	b = binary.BigEndian.AppendUint32(b, mathRand.Uint32())
+	b = binary.BigEndian.AppendUint32(b, rand.Uint32())
 	return b
 }
 

@@ -11,6 +11,7 @@ type Client struct {
 	Torrent     *Torrent
 	TrackerConn *net.UDPConn
 	TrackerAddr *net.UDPAddr
+	Retries     int
 }
 
 func newClient(torrent *Torrent, trackerConn *net.UDPConn, TrackerAddr *net.UDPAddr) Client {
@@ -18,6 +19,7 @@ func newClient(torrent *Torrent, trackerConn *net.UDPConn, TrackerAddr *net.UDPA
 		Torrent:     torrent,
 		TrackerConn: trackerConn,
 		TrackerAddr: TrackerAddr,
+		Retries:     20,
 	}
 }
 
@@ -30,14 +32,12 @@ func openUDP(torrent *Torrent) (*net.UDPConn, *net.UDPAddr, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	// conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	return conn, addr, nil
 }
 
 func findTracker(torrent *Torrent) (*net.UDPAddr, error) {
 	var trackerAddr *net.UDPAddr
 	for _, announce := range torrent.AnnounceList {
-		// fmt.Printf("checking: %s\n", announce[0])
 		parsedURL, err := url.Parse(announce[0])
 		if err != nil {
 			continue

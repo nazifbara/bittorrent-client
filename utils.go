@@ -2,6 +2,8 @@ package main
 
 import (
 	"crypto/rand"
+	"net"
+	"time"
 )
 
 func randomPeerID() []byte {
@@ -11,4 +13,19 @@ func randomPeerID() []byte {
 		panic(err)
 	}
 	return peerID
+}
+
+func retry[T any](retries int, conn *net.UDPConn, operation func(conn *net.UDPConn) (T, error)) (T, error) {
+	var lastErr error
+	var result T
+	for range retries {
+		conn.SetDeadline(time.Now().Add(6 * time.Second))
+		result, lastErr = operation(conn)
+		if ne, ok := lastErr.(net.Error); ok && ne.Timeout() {
+			continue
+		}
+		break
+	}
+	conn.SetDeadline(time.Time{})
+	return result, lastErr
 }
