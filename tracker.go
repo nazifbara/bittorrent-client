@@ -13,20 +13,31 @@ type ConnResp struct {
 	ConnectionID  []byte
 }
 
-func (c Client) GetPeers(conn *net.UDPConn) error {
+type AnnounceResp struct {
+	Action        []byte
+	TransactionID []byte
+	Interval      []byte
+	Leechers      uint32
+	Seeders       uint32
+	Peers         []net.UDPAddr
+}
+
+func (c Client) GetPeers() error {
 	connResp, err := c.RequestConn()
 	if err != nil {
 		return err
 	}
 	fmt.Println(connResp)
-	if _, err := conn.Write(c.BuildAnnounceReq(connResp.ConnectionID)); err != nil {
+	if _, err := c.TrackerConn.Write(c.BuildAnnounceReq(connResp.ConnectionID)); err != nil {
 		return err
 	}
 	respBuffer := make([]byte, 1024)
-	if _, err := conn.Read(respBuffer); err != nil {
+	n, err := c.TrackerConn.Read(respBuffer)
+	if err != nil {
 		return err
 	}
-	fmt.Println("Tracker understood the announcement")
+	announcResp := parseAnnounceResp(respBuffer[:n])
+	fmt.Println(announcResp)
 	return nil
 }
 
@@ -42,7 +53,7 @@ func (c Client) RequestConn() (ConnResp, error) {
 	if n < 16 {
 		return ConnResp{}, fmt.Errorf("tracker response is too short: %d", n)
 	}
-	return parseConnRes(respBuffer[:n]), nil
+	return parseConnResp(respBuffer[:n]), nil
 }
 
 func (c Client) BuildAnnounceReq(connectID []byte) []byte {
@@ -87,7 +98,27 @@ func buildConnReq() []byte {
 	return b
 }
 
-func parseConnRes(resp []byte) ConnResp {
+func parseAnnounceResp(resp []byte) AnnounceResp {
+	peers := []net.UDPAddr{}
+	peersBytes := resp[20:]
+	for i := 0; i+6 <= len(peersBytes); i += 6 {
+		ipBytes := peersBytes[i : i+4]
+		portBytes := peersBytes[i+4 : i+6]
+		ip := net.IPv4(ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3])
+		port := binary.BigEndian.Uint16(portBytes)
+		peers = append(peers, net.UDPAddr{IP: ip, Port: int(port)})
+	}
+	return AnnounceResp{
+		Action:        resp[0:4],
+		TransactionID: resp[4:8],
+		Interval:      resp[8:12],
+		Leechers:      binary.BigEndian.Uint32(resp[12:16]),
+		Seeders:       binary.BigEndian.Uint32(resp[16:20]),
+		Peers:         peers,
+	}
+}
+
+func parseConnResp(resp []byte) ConnResp {
 	return ConnResp{
 		Action:        resp[0:4],
 		TransactionID: resp[4:8],

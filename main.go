@@ -30,9 +30,9 @@ func run(torrentPath string) (int, error) {
 		return 1, err
 	}
 	defer conn.Close()
-
 	client := newClient(torrent, conn, addr)
-
-	client.GetPeers(conn)
+	if err := client.GetPeers(); err != nil {
+		return 1, err
+	}
 	return 0, nil
 }
