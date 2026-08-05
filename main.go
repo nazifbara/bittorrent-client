@@ -25,12 +25,14 @@ func run(torrentPath string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	conn, err := createUDPConn(torrent)
+	conn, addr, err := openUDP(torrent)
 	if err != nil {
 		return 1, err
 	}
 	defer conn.Close()
 
-	getPeers(conn)
+	client := newClient(torrent, conn, addr)
+
+	client.GetPeers(conn)
 	return 0, nil
 }

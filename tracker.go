@@ -3,31 +3,39 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"math/rand"
+	mathRand "math/rand"
 	"net"
 )
 
 type ConnResp struct {
-	Action        uint32
-	TransactionID uint32
-	ConnectionID  uint64
+	Action        []byte
+	TransactionID []byte
+	ConnectionID  []byte
 }
 
-func getPeers(conn *net.UDPConn) error {
-	connResp, err := requestConn(conn)
+func (c Client) GetPeers(conn *net.UDPConn) error {
+	connResp, err := c.RequestConn()
 	if err != nil {
 		return err
 	}
 	fmt.Println(connResp)
+	if _, err := conn.Write(c.BuildAnnounceReq(connResp.ConnectionID)); err != nil {
+		return err
+	}
+	respBuffer := make([]byte, 1024)
+	if _, err := conn.Read(respBuffer); err != nil {
+		return err
+	}
+	fmt.Println("Tracker understood the announcement")
 	return nil
 }
 
-func requestConn(conn *net.UDPConn) (ConnResp, error) {
+func (c Client) RequestConn() (ConnResp, error) {
 	respBuffer := make([]byte, 1024)
-	if _, err := conn.Write(buildConnReq()); err != nil {
+	if _, err := c.TrackerConn.Write(buildConnReq()); err != nil {
 		return ConnResp{}, err
 	}
-	n, err := conn.Read(respBuffer)
+	n, err := c.TrackerConn.Read(respBuffer)
 	if err != nil {
 		return ConnResp{}, err
 	}
@@ -37,6 +45,37 @@ func requestConn(conn *net.UDPConn) (ConnResp, error) {
 	return parseConnRes(respBuffer[:n]), nil
 }
 
+func (c Client) BuildAnnounceReq(connectID []byte) []byte {
+	b := make([]byte, 0, 98)
+	// connection id
+	b = append(b, connectID...)
+	// action 1 for announcement
+	b = binary.BigEndian.AppendUint32(b, 1)
+	// transaction id
+	b = binary.BigEndian.AppendUint32(b, mathRand.Uint32())
+	// infohash
+	b = append(b, c.Torrent.InfoHash[:]...)
+	// peer id
+	b = append(b, randomPeerID()...)
+	// downloaded
+	b = binary.BigEndian.AppendUint64(b, 0)
+	// left
+	b = binary.BigEndian.AppendUint64(b, c.Torrent.Length)
+	// uploaded
+	b = binary.BigEndian.AppendUint64(b, 0)
+	// event 0 none
+	b = binary.BigEndian.AppendUint32(b, 0)
+	// ip address 0 default
+	b = binary.BigEndian.AppendUint32(b, 0)
+	// key
+	b = binary.BigEndian.AppendUint32(b, mathRand.Uint32())
+	// num want
+	b = binary.BigEndian.AppendUint32(b, uint32(0xFFFFFFFF))
+	// port
+	b = binary.BigEndian.AppendUint16(b, uint16(c.TrackerAddr.Port))
+	return b
+}
+
 func buildConnReq() []byte {
 	b := make([]byte, 0, 16)
 	// connection id
@@ -44,14 +83,14 @@ func buildConnReq() []byte {
 	// connect action
 	b = binary.BigEndian.AppendUint32(b, 0)
 	// transaction id
-	b = binary.BigEndian.AppendUint32(b, rand.Uint32())
+	b = binary.BigEndian.AppendUint32(b, mathRand.Uint32())
 	return b
 }
 
 func parseConnRes(resp []byte) ConnResp {
 	return ConnResp{
-		Action:        binary.BigEndian.Uint32(resp[0:4]),
-		TransactionID: binary.BigEndian.Uint32(resp[4:8]),
-		ConnectionID:  binary.BigEndian.Uint64(resp[8:16]),
+		Action:        resp[0:4],
+		TransactionID: resp[4:8],
+		ConnectionID:  resp[8:16],
 	}
 }
