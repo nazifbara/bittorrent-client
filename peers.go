@@ -22,6 +22,8 @@ func connectToPeer(peer *net.TCPAddr) (*net.TCPConn, error) {
 }
 
 func (c *Client) AddConnectedPeer(cp ConnectedPeer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	index := slices.IndexFunc(c.connectedPeers, func(p ConnectedPeer) bool { return p.IP.Equal(cp.IP) })
 	if index == -1 {
 		c.connectedPeers = append(c.connectedPeers, cp)

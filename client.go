@@ -2,6 +2,7 @@ package main
 
 import (
 	"net"
+	"sync"
 )
 
 type ConnectedPeer struct {
@@ -14,6 +15,7 @@ type Client struct {
 	TrackerAddr    *net.UDPAddr
 	Retries        int
 	connectedPeers []ConnectedPeer
+	mu             sync.Mutex
 }
 
 func newClient(torrent *Torrent, trackerConn *net.UDPConn, TrackerAddr *net.UDPAddr) Client {
