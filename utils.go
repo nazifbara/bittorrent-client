@@ -15,12 +15,12 @@ func randomPeerID() []byte {
 	return peerID
 }
 
-func retry[T any](retries int, conn *net.UDPConn, operation func(conn *net.UDPConn) (T, error)) (T, error) {
+func retry[T any](retries int, conn *net.UDPConn, operation func() (T, error)) (T, error) {
 	var lastErr error
 	var result T
 	for range retries {
 		conn.SetDeadline(time.Now().Add(6 * time.Second))
-		result, lastErr = operation(conn)
+		result, lastErr = operation()
 		if ne, ok := lastErr.(net.Error); ok && ne.Timeout() {
 			continue
 		}
