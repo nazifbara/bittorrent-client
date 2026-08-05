@@ -22,23 +22,29 @@ type AnnounceResp struct {
 	Peers         []net.UDPAddr
 }
 
-func (c Client) GetPeers() error {
+func (c Client) GetPeers() ([]net.UDPAddr, error) {
 	connResp, err := c.RequestConn()
 	if err != nil {
-		return err
+		return []net.UDPAddr{}, err
 	}
-	fmt.Println(connResp)
+	peers, err := c.Announce(connResp)
+	if err != nil {
+		return []net.UDPAddr{}, err
+	}
+	return peers, nil
+}
+
+func (c Client) Announce(connResp ConnResp) ([]net.UDPAddr, error) {
 	if _, err := c.TrackerConn.Write(c.BuildAnnounceReq(connResp.ConnectionID)); err != nil {
-		return err
+		return []net.UDPAddr{}, err
 	}
 	respBuffer := make([]byte, 1024)
 	n, err := c.TrackerConn.Read(respBuffer)
 	if err != nil {
-		return err
+		return []net.UDPAddr{}, err
 	}
 	announcResp := parseAnnounceResp(respBuffer[:n])
-	fmt.Println(announcResp)
-	return nil
+	return announcResp.Peers, nil
 }
 
 func (c Client) RequestConn() (ConnResp, error) {
