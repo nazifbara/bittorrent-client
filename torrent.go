@@ -14,6 +14,7 @@ type Torrent struct {
 	InfoHash     [20]byte
 	PieceHashes  [][20]byte
 	PieceLength  int
+	Pieces       string
 	Length       uint64
 	Name         string
 	AnnounceList [][]string
@@ -39,6 +40,7 @@ func (bt BencodeTorrent) ToTorrent() (Torrent, error) {
 		InfoHash:     infoHash,
 		Length:       bt.Info.Length,
 		AnnounceList: bt.AnnounceList,
+		Pieces:       bt.Info.Pieces,
 	}, nil
 }
 

@@ -136,7 +136,7 @@ func parseConnResp(resp []byte) ConnResp {
 	}
 }
 
-func openUDP(torrent *Torrent) (*net.UDPConn, *net.UDPAddr, error) {
+func connectToTracker(torrent *Torrent) (*net.UDPConn, *net.UDPAddr, error) {
 	addr, err := findTracker(torrent)
 	if err != nil {
 		return nil, nil, err

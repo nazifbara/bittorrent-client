@@ -25,7 +25,7 @@ func run(torrentPath string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	conn, addr, err := openUDP(torrent)
+	conn, addr, err := connectToTracker(torrent)
 	if err != nil {
 		return 1, err
 	}
