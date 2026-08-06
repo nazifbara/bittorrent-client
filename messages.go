@@ -111,3 +111,18 @@ func (c *Client) BuildPiece(pieceIdx, begin uint32, block []byte) []byte {
 	b = append(b, block...)
 	return b
 }
+
+func (c *Client) BuildCancel(pieceIdx, begin, pieceLength uint32) []byte {
+	b := make([]byte, 0, 17)
+	// length
+	b = binary.BigEndian.AppendUint32(b, 13)
+	// message id
+	b = append(b, 8)
+	// piece index
+	b = binary.BigEndian.AppendUint32(b, pieceIdx)
+	// begin
+	b = binary.BigEndian.AppendUint32(b, begin)
+	// piece length
+	b = binary.BigEndian.AppendUint32(b, pieceLength)
+	return b
+}

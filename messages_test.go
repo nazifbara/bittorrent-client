@@ -212,6 +212,41 @@ func TestBuildRequest(t *testing.T) {
 	}
 }
 
+func TestBuildCancel(t *testing.T) {
+	client := Client{}
+
+	tests := []struct {
+		name        string
+		pieceIdx    uint32
+		begin       uint32
+		pieceLength uint32
+	}{
+		{name: "cancel chunk 0", pieceIdx: 0, begin: 0, pieceLength: 16384},
+		{name: "cancel chunk 42", pieceIdx: 42, begin: 1024, pieceLength: 32768},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := client.BuildCancel(tc.pieceIdx, tc.begin, tc.pieceLength)
+			if len(got) != 17 {
+				t.Fatalf("%s: expected length 17, got %d", tc.name, len(got))
+			}
+			if got[4] != 8 {
+				t.Fatalf("%s: expected message id 8, got %d", tc.name, got[4])
+			}
+			if binary.BigEndian.Uint32(got[5:9]) != tc.pieceIdx {
+				t.Fatalf("%s: expected piece index %d, got %d", tc.name, tc.pieceIdx, binary.BigEndian.Uint32(got[5:9]))
+			}
+			if binary.BigEndian.Uint32(got[9:13]) != tc.begin {
+				t.Fatalf("%s: expected begin %d, got %d", tc.name, tc.begin, binary.BigEndian.Uint32(got[9:13]))
+			}
+			if binary.BigEndian.Uint32(got[13:17]) != tc.pieceLength {
+				t.Fatalf("%s: expected piece length %d, got %d", tc.name, tc.pieceLength, binary.BigEndian.Uint32(got[13:17]))
+			}
+		})
+	}
+}
+
 func TestBuildPiece(t *testing.T) {
 	client := Client{}
 
