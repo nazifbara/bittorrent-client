@@ -35,7 +35,7 @@ func (c *Client) BuildUnchoke() []byte {
 	// length
 	b = binary.BigEndian.AppendUint32(b, 1)
 	// message id
-	b = append(b, 2)
+	b = append(b, 1)
 	return b
 }
 
@@ -45,5 +45,14 @@ func (c *Client) BuildInterested() []byte {
 	b = binary.BigEndian.AppendUint32(b, 1)
 	// message id
 	b = append(b, 2)
+	return b
+}
+
+func (c *Client) BuildUninterested() []byte {
+	b := make([]byte, 0, 5)
+	// length
+	b = binary.BigEndian.AppendUint32(b, 1)
+	// message id
+	b = append(b, 3)
 	return b
 }

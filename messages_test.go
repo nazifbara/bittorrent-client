@@ -109,3 +109,23 @@ func TestBuildInterested(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildUninterested(t *testing.T) {
+	client := Client{}
+
+	tests := []struct {
+		name string
+		want []byte
+	}{
+		{name: "no interested", want: []byte{0, 0, 0, 1, 3}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := client.BuildUninterested()
+			if !bytes.Equal(got, tc.want) {
+				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}
