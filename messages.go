@@ -23,9 +23,18 @@ func (c *Client) BuildKeepAlive() []byte {
 
 func (c *Client) BuildChoke() []byte {
 	b := make([]byte, 0, 5)
-	// length prefix = 1
+	// length
 	b = binary.BigEndian.AppendUint32(b, 1)
-	// message id = 0 (choke)
+	// message id
 	b = append(b, 0)
+	return b
+}
+
+func (c *Client) BuildUnchoke() []byte {
+	b := make([]byte, 0, 5)
+	// length
+	b = binary.BigEndian.AppendUint32(b, 1)
+	// message id
+	b = append(b, 2)
 	return b
 }
