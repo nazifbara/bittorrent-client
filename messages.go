@@ -67,3 +67,16 @@ func (c *Client) BuildHave(pieceIdx uint32) []byte {
 	b = binary.BigEndian.AppendUint32(b, pieceIdx)
 	return b
 }
+
+func (c *Client) BuildBitfield(payload []byte) []byte {
+	payloadSize := len(payload)
+	// 4 bytes length + 1 byte message id + payload size
+	b := make([]byte, 0, 5+payloadSize)
+	// length
+	b = binary.BigEndian.AppendUint32(b, uint32(1+payloadSize))
+	// message id
+	b = append(b, 5)
+	// bitfield
+	b = append(b, payload...)
+	return b
+}

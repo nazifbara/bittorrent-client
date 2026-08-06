@@ -130,6 +130,29 @@ func TestBuildUninterested(t *testing.T) {
 	}
 }
 
+func TestBuildBitfield(t *testing.T) {
+	client := Client{}
+
+	tests := []struct {
+		name    string
+		payload []byte
+		want    []byte
+	}{
+		{name: "empty bitfield", payload: []byte{}, want: []byte{0, 0, 0, 1, 5}},
+		{name: "single byte bitfield", payload: []byte{0x80}, want: []byte{0, 0, 0, 2, 5, 0x80}},
+		{name: "multi-byte bitfield", payload: []byte{0xAA, 0x55}, want: []byte{0, 0, 0, 3, 5, 0xAA, 0x55}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := client.BuildBitfield(tc.payload)
+			if !bytes.Equal(got, tc.want) {
+				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestBuildHave(t *testing.T) {
 	client := Client{}
 
