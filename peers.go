@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-func connectToPeer(peer *net.TCPAddr) (*net.TCPConn, error) {
-	conn, err := net.DialTimeout("tcp", peer.String(), 3*time.Second)
+func connectToPeer(address *net.TCPAddr) (*net.TCPConn, error) {
+	conn, err := net.DialTimeout("tcp", address.String(), 3*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -21,39 +21,39 @@ func connectToPeer(peer *net.TCPAddr) (*net.TCPConn, error) {
 	return tcpConn, nil
 }
 
-func (c *Client) AddConnectedPeer(cp ConnectedPeer) {
+func (c *Client) AddConnectedPeer(p *Peer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	index := slices.IndexFunc(c.connectedPeers, func(p ConnectedPeer) bool { return p.IP.Equal(cp.IP) })
+	index := slices.IndexFunc(c.ActivePeers, func(ap *Peer) bool { return p.IP.Equal(ap.IP) })
 	if index == -1 {
-		c.connectedPeers = append(c.connectedPeers, cp)
+		c.ActivePeers = append(c.ActivePeers, p)
 	}
 }
 
-func (c *Client) DeleteConnectedPeer(p net.TCPAddr) {
+func (c *Client) DeleteConnectedPeer(address *net.TCPAddr) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.connectedPeers = slices.DeleteFunc(c.connectedPeers, func(cp ConnectedPeer) bool { return cp.IP.Equal(p.IP) })
+	c.ActivePeers = slices.DeleteFunc(c.ActivePeers, func(p *Peer) bool { return p.IP.Equal(address.IP) })
 }
 
-func (c *Client) TrackConnectedPeers(peers []*net.TCPAddr) {
+func (c *Client) TrackConnectedPeers(addresses []*net.TCPAddr) {
 	for {
 		var wg sync.WaitGroup
-		wg.Add(len(peers))
-		for _, peer := range peers {
+		wg.Add(len(addresses))
+		for _, peer := range addresses {
 			p := *peer
 			go func() {
 				defer wg.Done()
 				conn, err := connectToPeer(&p)
 				if err == nil {
-					c.AddConnectedPeer(ConnectedPeer{TCPConn: conn, TCPAddr: &p})
+					c.AddConnectedPeer(&Peer{TCPConn: conn, TCPAddr: &p})
 				} else {
-					c.DeleteConnectedPeer(p)
+					c.DeleteConnectedPeer(&p)
 				}
 			}()
 		}
 		wg.Wait()
-		fmt.Println(c.connectedPeers)
+		fmt.Println(c.ActivePeers)
 		time.Sleep(time.Second * 10)
 	}
 }

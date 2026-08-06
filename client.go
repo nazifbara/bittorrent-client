@@ -5,17 +5,17 @@ import (
 	"sync"
 )
 
-type ConnectedPeer struct {
+type Peer struct {
 	*net.TCPConn
 	*net.TCPAddr
 }
 type Client struct {
-	Torrent        *Torrent
-	TrackerConn    *net.UDPConn
-	TrackerAddr    *net.UDPAddr
-	Retries        int
-	connectedPeers []ConnectedPeer
-	mu             sync.Mutex
+	Torrent     *Torrent
+	TrackerConn *net.UDPConn
+	TrackerAddr *net.UDPAddr
+	Retries     int
+	ActivePeers []*Peer
+	mu          sync.Mutex
 }
 
 func newClient(torrent *Torrent, trackerConn *net.UDPConn, TrackerAddr *net.UDPAddr) Client {

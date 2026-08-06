@@ -21,10 +21,10 @@ type AnnounceResp struct {
 	Interval      []byte
 	Leechers      uint32
 	Seeders       uint32
-	Peers         []*net.TCPAddr
+	PeerAddresses []*net.TCPAddr
 }
 
-func (c Client) GetPeers() ([]*net.TCPAddr, error) {
+func (c *Client) GetPeers() ([]*net.TCPAddr, error) {
 	return retry(20, c.TrackerConn, func() ([]*net.TCPAddr, error) {
 		connResp, err := c.RequestConn()
 		if err != nil {
@@ -38,7 +38,7 @@ func (c Client) GetPeers() ([]*net.TCPAddr, error) {
 	})
 }
 
-func (c Client) Announce(connResp ConnResp) ([]*net.TCPAddr, error) {
+func (c *Client) Announce(connResp ConnResp) ([]*net.TCPAddr, error) {
 	if _, err := c.TrackerConn.Write(c.BuildAnnounceReq(connResp.ConnectionID)); err != nil {
 		return []*net.TCPAddr{}, err
 	}
@@ -48,10 +48,10 @@ func (c Client) Announce(connResp ConnResp) ([]*net.TCPAddr, error) {
 		return []*net.TCPAddr{}, err
 	}
 	announcResp := parseAnnounceResp(respBuffer[:n])
-	return announcResp.Peers, nil
+	return announcResp.PeerAddresses, nil
 }
 
-func (c Client) RequestConn() (ConnResp, error) {
+func (c *Client) RequestConn() (ConnResp, error) {
 	respBuffer := make([]byte, 1024)
 	if _, err := c.TrackerConn.Write(buildConnReq()); err != nil {
 		return ConnResp{}, err
@@ -66,7 +66,7 @@ func (c Client) RequestConn() (ConnResp, error) {
 	return parseConnResp(respBuffer[:n]), nil
 }
 
-func (c Client) BuildAnnounceReq(connectID []byte) []byte {
+func (c *Client) BuildAnnounceReq(connectID []byte) []byte {
 	b := make([]byte, 0, 98)
 	// connection id
 	b = append(b, connectID...)
@@ -109,14 +109,14 @@ func buildConnReq() []byte {
 }
 
 func parseAnnounceResp(resp []byte) AnnounceResp {
-	peers := []*net.TCPAddr{}
+	peerAddresses := []*net.TCPAddr{}
 	peersBytes := resp[20:]
 	for i := 0; i+6 <= len(peersBytes); i += 6 {
 		ipBytes := peersBytes[i : i+4]
 		portBytes := peersBytes[i+4 : i+6]
 		ip := net.IPv4(ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3])
 		port := binary.BigEndian.Uint16(portBytes)
-		peers = append(peers, &net.TCPAddr{IP: ip, Port: int(port)})
+		peerAddresses = append(peerAddresses, &net.TCPAddr{IP: ip, Port: int(port)})
 	}
 	return AnnounceResp{
 		Action:        resp[0:4],
@@ -124,7 +124,7 @@ func parseAnnounceResp(resp []byte) AnnounceResp {
 		Interval:      resp[8:12],
 		Leechers:      binary.BigEndian.Uint32(resp[12:16]),
 		Seeders:       binary.BigEndian.Uint32(resp[16:20]),
-		Peers:         peers,
+		PeerAddresses: peerAddresses,
 	}
 }
 
