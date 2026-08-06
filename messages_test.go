@@ -77,12 +77,32 @@ func TestBuildUnchoke(t *testing.T) {
 		name string
 		want []byte
 	}{
-		{name: "unchoke", want: []byte{0, 0, 0, 1, 2}},
+		{name: "unchoke", want: []byte{0, 0, 0, 1, 1}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := client.BuildUnchoke()
+			if !bytes.Equal(got, tc.want) {
+				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildInterested(t *testing.T) {
+	client := Client{}
+
+	tests := []struct {
+		name string
+		want []byte
+	}{
+		{name: "interested", want: []byte{0, 0, 0, 1, 2}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := client.BuildInterested()
 			if !bytes.Equal(got, tc.want) {
 				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
 			}
