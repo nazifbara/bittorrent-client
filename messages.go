@@ -126,3 +126,14 @@ func (c *Client) BuildCancel(pieceIdx, begin, pieceLength uint32) []byte {
 	b = binary.BigEndian.AppendUint32(b, pieceLength)
 	return b
 }
+
+func (c *Client) BuildPort(port uint16) []byte {
+	b := make([]byte, 0, 7)
+	// length
+	b = binary.BigEndian.AppendUint32(b, 3)
+	// message id
+	b = append(b, 9)
+	// port
+	b = binary.BigEndian.AppendUint16(b, port)
+	return b
+}

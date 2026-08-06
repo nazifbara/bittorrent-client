@@ -247,6 +247,33 @@ func TestBuildCancel(t *testing.T) {
 	}
 }
 
+func TestBuildPort(t *testing.T) {
+	client := Client{}
+
+	tests := []struct {
+		name string
+		port uint16
+	}{
+		{name: "port 6881", port: 6881},
+		{name: "port 9999", port: 9999},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := client.BuildPort(tc.port)
+			if len(got) != 7 {
+				t.Fatalf("%s: expected length 7, got %d", tc.name, len(got))
+			}
+			if got[4] != 9 {
+				t.Fatalf("%s: expected message id 9, got %d", tc.name, got[4])
+			}
+			if binary.BigEndian.Uint16(got[5:7]) != tc.port {
+				t.Fatalf("%s: expected port %d, got %d", tc.name, tc.port, binary.BigEndian.Uint16(got[5:7]))
+			}
+		})
+	}
+}
+
 func TestBuildPiece(t *testing.T) {
 	client := Client{}
 
