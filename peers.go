@@ -21,34 +21,46 @@ func connectToPeer(address *net.TCPAddr) (*net.TCPConn, error) {
 	return tcpConn, nil
 }
 
-func (c *Client) AddConnectedPeer(p *Peer) {
+func (c *Client) HandlePeerSuccess(p *Peer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	index := slices.IndexFunc(c.ActivePeers, func(ap *Peer) bool { return p.IP.Equal(ap.IP) })
+	index := slices.IndexFunc(c.ActivePeers, func(ap *Peer) bool {
+		return p.IP.Equal(ap.IP) && p.Port == ap.Port
+	})
 	if index == -1 {
+		p.lastConnected = time.Now()
 		c.ActivePeers = append(c.ActivePeers, p)
+		return
 	}
+	c.ActivePeers[index].lastConnected = time.Now()
+	p.Close()
 }
 
-func (c *Client) DeleteConnectedPeer(address *net.TCPAddr) {
+func (c *Client) HandlePeerFailure(address *net.TCPAddr) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.ActivePeers = slices.DeleteFunc(c.ActivePeers, func(p *Peer) bool { return p.IP.Equal(address.IP) })
+	peerIdx := slices.IndexFunc(c.ActivePeers, func(ac *Peer) bool { return ac.IP.Equal(address.IP) })
+	if peerIdx == -1 {
+		return
+	}
+	if time.Since(c.ActivePeers[peerIdx].lastConnected) > time.Second*30 {
+		c.ActivePeers = slices.Delete(c.ActivePeers, peerIdx, peerIdx+1)
+	}
 }
 
 func (c *Client) TrackConnectedPeers(addresses []*net.TCPAddr) {
 	for {
 		var wg sync.WaitGroup
 		wg.Add(len(addresses))
-		for _, peer := range addresses {
-			p := *peer
+		for _, addr := range addresses {
+			addr := *addr
 			go func() {
 				defer wg.Done()
-				conn, err := connectToPeer(&p)
+				conn, err := connectToPeer(&addr)
 				if err == nil {
-					c.AddConnectedPeer(&Peer{TCPConn: conn, TCPAddr: &p})
+					c.HandlePeerSuccess(&Peer{TCPConn: conn, TCPAddr: &addr})
 				} else {
-					c.DeleteConnectedPeer(&p)
+					c.HandlePeerFailure(&addr)
 				}
 			}()
 		}

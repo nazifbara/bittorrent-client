@@ -3,11 +3,13 @@ package main
 import (
 	"net"
 	"sync"
+	"time"
 )
 
 type Peer struct {
 	*net.TCPConn
 	*net.TCPAddr
+	lastConnected time.Time
 }
 type Client struct {
 	Torrent     *Torrent
