@@ -16,3 +16,7 @@ func (c *Client) BuildHandShake() []byte {
 	b = append(b, randomPeerID()...)
 	return b
 }
+
+func (c *Client) BuildKeepAlive() []byte {
+	return make([]byte, 1)
+}

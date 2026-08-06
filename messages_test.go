@@ -38,3 +38,14 @@ func TestBuildHandShake(t *testing.T) {
 		t.Fatalf("unexpected peer id prefix: %q", string(peerID[:8]))
 	}
 }
+
+func TestBuildKeepAlive(t *testing.T) {
+	client := Client{}
+	ka := client.BuildKeepAlive()
+	if len(ka) != 1 {
+		t.Fatalf("expected keep-alive length 1, got %d", len(ka))
+	}
+	if ka[0] != 0 {
+		t.Fatalf("expected keep-alive byte 0, got %d", ka[0])
+	}
+}
