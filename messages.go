@@ -80,3 +80,18 @@ func (c *Client) BuildBitfield(payload []byte) []byte {
 	b = append(b, payload...)
 	return b
 }
+
+func (c *Client) BuildRequest(pieceIdx, begin, pieceLength uint32) []byte {
+	b := make([]byte, 0, 17)
+	// length
+	b = binary.BigEndian.AppendUint32(b, 13)
+	// message id
+	b = append(b, 6)
+	// piece index
+	b = binary.BigEndian.AppendUint32(b, pieceIdx)
+	// begin
+	b = binary.BigEndian.AppendUint32(b, begin)
+	// piece length
+	b = binary.BigEndian.AppendUint32(b, pieceLength)
+	return b
+}
