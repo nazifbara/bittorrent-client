@@ -211,3 +211,38 @@ func TestBuildRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildPiece(t *testing.T) {
+	client := Client{}
+
+	tests := []struct {
+		name     string
+		pieceIdx uint32
+		begin    uint32
+		block    []byte
+	}{
+		{name: "empty block", pieceIdx: 0, begin: 0, block: []byte{}},
+		{name: "small block", pieceIdx: 1, begin: 4, block: []byte{0x01, 0x02, 0x03}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := client.BuildPiece(tc.pieceIdx, tc.begin, tc.block)
+			if len(got) != 13+len(tc.block) {
+				t.Fatalf("%s: expected length %d, got %d", tc.name, 13+len(tc.block), len(got))
+			}
+			if got[4] != 7 {
+				t.Fatalf("%s: expected message id 7, got %d", tc.name, got[4])
+			}
+			if binary.BigEndian.Uint32(got[5:9]) != tc.pieceIdx {
+				t.Fatalf("%s: expected piece index %d, got %d", tc.name, tc.pieceIdx, binary.BigEndian.Uint32(got[5:9]))
+			}
+			if binary.BigEndian.Uint32(got[9:13]) != tc.begin {
+				t.Fatalf("%s: expected begin %d, got %d", tc.name, tc.begin, binary.BigEndian.Uint32(got[9:13]))
+			}
+			if !bytes.Equal(got[13:], tc.block) {
+				t.Fatalf("%s: expected block %v, got %v", tc.name, tc.block, got[13:])
+			}
+		})
+	}
+}

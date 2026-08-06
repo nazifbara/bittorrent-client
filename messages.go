@@ -95,3 +95,19 @@ func (c *Client) BuildRequest(pieceIdx, begin, pieceLength uint32) []byte {
 	b = binary.BigEndian.AppendUint32(b, pieceLength)
 	return b
 }
+
+func (c *Client) BuildPiece(pieceIdx, begin uint32, block []byte) []byte {
+	blockSize := len(block)
+	b := make([]byte, 0, 13+blockSize)
+	// length
+	b = binary.BigEndian.AppendUint32(b, uint32(9+blockSize))
+	// message id
+	b = append(b, 7)
+	// piece index
+	b = binary.BigEndian.AppendUint32(b, pieceIdx)
+	// begin
+	b = binary.BigEndian.AppendUint32(b, begin)
+	// block
+	b = append(b, block...)
+	return b
+}
