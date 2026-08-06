@@ -42,10 +42,30 @@ func TestBuildHandShake(t *testing.T) {
 func TestBuildKeepAlive(t *testing.T) {
 	client := Client{}
 	ka := client.BuildKeepAlive()
-	if len(ka) != 1 {
-		t.Fatalf("expected keep-alive length 1, got %d", len(ka))
+	if len(ka) != 4 {
+		t.Fatalf("expected keep-alive length 4, got %d", len(ka))
 	}
 	if ka[0] != 0 {
 		t.Fatalf("expected keep-alive byte 0, got %d", ka[0])
+	}
+}
+
+func TestBuildChoke(t *testing.T) {
+	client := Client{}
+
+	tests := []struct {
+		name string
+		want []byte
+	}{
+		{name: "choke", want: []byte{0, 0, 0, 1, 0}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := client.BuildChoke()
+			if !bytes.Equal(got, tc.want) {
+				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
+			}
+		})
 	}
 }

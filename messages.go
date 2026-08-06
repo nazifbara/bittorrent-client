@@ -18,5 +18,14 @@ func (c *Client) BuildHandShake() []byte {
 }
 
 func (c *Client) BuildKeepAlive() []byte {
-	return make([]byte, 1)
+	return make([]byte, 4)
+}
+
+func (c *Client) BuildChoke() []byte {
+	b := make([]byte, 0, 5)
+	// length prefix = 1
+	b = binary.BigEndian.AppendUint32(b, 1)
+	// message id = 0 (choke)
+	b = append(b, 0)
+	return b
 }
