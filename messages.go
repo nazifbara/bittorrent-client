@@ -56,3 +56,14 @@ func (c *Client) BuildUninterested() []byte {
 	b = append(b, 3)
 	return b
 }
+
+func (c *Client) BuildHave(pieceIdx uint32) []byte {
+	b := make([]byte, 0, 9)
+	// length
+	b = binary.BigEndian.AppendUint32(b, 5)
+	// message id
+	b = append(b, 4)
+	// piece index
+	b = binary.BigEndian.AppendUint32(b, pieceIdx)
+	return b
+}

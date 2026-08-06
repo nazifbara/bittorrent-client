@@ -129,3 +129,26 @@ func TestBuildUninterested(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildHave(t *testing.T) {
+	client := Client{}
+
+	tests := []struct {
+		name     string
+		pieceIdx uint32
+		want     []byte
+	}{
+		{name: "have piece 0", pieceIdx: 0, want: []byte{0, 0, 0, 5, 4, 0, 0, 0, 0}},
+		{name: "have piece 42", pieceIdx: 42, want: []byte{0, 0, 0, 5, 4, 0, 0, 0, 42}},
+		{name: "have piece max", pieceIdx: 0xFFFFFFFF, want: []byte{0, 0, 0, 5, 4, 255, 255, 255, 255}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := client.BuildHave(tc.pieceIdx)
+			if !bytes.Equal(got, tc.want) {
+				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}
