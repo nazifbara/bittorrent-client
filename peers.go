@@ -30,32 +30,30 @@ func (c *Client) AddConnectedPeer(cp ConnectedPeer) {
 	}
 }
 
+func (c *Client) DeleteConnectedPeer(p net.TCPAddr) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.connectedPeers = slices.DeleteFunc(c.connectedPeers, func(cp ConnectedPeer) bool { return cp.IP.Equal(p.IP) })
+}
+
 func (c *Client) TrackConnectedPeers(peers []*net.TCPAddr) {
 	for {
-		newConnected := make(chan ConnectedPeer)
 		var wg sync.WaitGroup
 		wg.Add(len(peers))
-
-		go func() {
-			for cp := range newConnected {
-				c.AddConnectedPeer(cp)
-				fmt.Println(c.connectedPeers)
-			}
-		}()
-
 		for _, peer := range peers {
 			p := *peer
 			go func() {
 				defer wg.Done()
 				conn, err := connectToPeer(&p)
 				if err == nil {
-					newConnected <- ConnectedPeer{TCPConn: conn, TCPAddr: peer}
+					c.AddConnectedPeer(ConnectedPeer{TCPConn: conn, TCPAddr: &p})
+				} else {
+					c.DeleteConnectedPeer(p)
 				}
 			}()
 		}
-
 		wg.Wait()
-		close(newConnected)
-		time.Sleep(time.Second * 5)
+		fmt.Println(c.connectedPeers)
+		time.Sleep(time.Second * 10)
 	}
 }
