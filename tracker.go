@@ -51,8 +51,8 @@ func (c *Client) Announce(connResp ConnResp) ([]*net.TCPAddr, error) {
 	if _, err := c.TrackerConn.Write(c.BuildAnnounceReq(connResp.ConnectionID)); err != nil {
 		return []*net.TCPAddr{}, err
 	}
-	respBuffer := make([]byte, 120)
-	n, err := c.TrackerConn.Read(respBuffer)
+	respBuffer := make([]byte, 1024)
+	n, err := io.ReadFull(c.TrackerConn, respBuffer)
 	if err != nil {
 		return []*net.TCPAddr{}, err
 	}

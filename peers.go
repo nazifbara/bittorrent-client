@@ -16,13 +16,16 @@ func (c *Client) connectToPeer(address *net.TCPAddr) (*Peer, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	_, existingPeer := c.getPeerByAddr(address)
-	if c.Handshake(existingPeer) == nil {
+	if existingPeer != nil {
+		fmt.Printf("keep-alive-->%v\n", existingPeer.TCPAddr)
+		if _, err := existingPeer.Write(c.BuildKeepAlive()); err != nil {
+			fmt.Printf("keep-alive xxx %v\n", existingPeer.TCPAddr)
+			return nil, fmt.Errorf("connection lost with %v", existingPeer.TCPAddr)
+		}
+		fmt.Printf("keep-alive<--%v\n", existingPeer.TCPAddr)
 		return existingPeer, nil
 	}
-	if existingPeer != nil {
-		existingPeer.Close()
-	}
-	conn, err := net.DialTimeout("tcp", address.String(), 3*time.Second)
+	conn, err := net.DialTimeout("tcp", address.String(), 300*time.Millisecond)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +94,7 @@ func (c *Client) TrackActivePeers(addresses []*net.TCPAddr) {
 			}()
 		}
 		wg.Wait()
-		fmt.Println(c.ActivePeers)
+		fmt.Printf("active peers: %d\ninactive peers: %d\n", len(c.ActivePeers), len(addresses)-len(c.ActivePeers))
 		time.Sleep(time.Second * 10)
 	}
 }

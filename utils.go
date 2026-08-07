@@ -19,8 +19,9 @@ func retry[T any](retries int, conn net.Conn, operation func() (T, error)) (T, e
 	var lastErr error
 	var result T
 	for range retries {
-		conn.SetDeadline(time.Now().Add(3 * time.Second))
+		conn.SetDeadline(time.Now().Add(1 * time.Second))
 		result, lastErr = operation()
+		conn.SetDeadline(time.Time{})
 		if ne, ok := lastErr.(net.Error); ok && ne.Timeout() {
 			continue
 		}

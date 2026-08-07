@@ -17,6 +17,7 @@ func (c *Client) Handshake(peer *Peer) error {
 	fmt.Printf("handshake-->%v\n", peer.TCPAddr)
 	resp, err := readHandshake(peer.TCPConn)
 	if err != nil {
+		fmt.Printf("handshake xxx %v\n", peer.TCPAddr)
 		return err
 	}
 	fmt.Printf("%d<--handshake(%v)\n", len(resp), peer.TCPAddr)
