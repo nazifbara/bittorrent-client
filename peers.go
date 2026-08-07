@@ -78,13 +78,16 @@ func (c *Client) HandlePeerFailure(address *net.TCPAddr) {
 }
 
 func (c *Client) HealthcheckPeers(addresses []*net.TCPAddr) {
+	sem := make(chan struct{}, 10)
 	for {
 		var wg sync.WaitGroup
 		wg.Add(len(addresses))
 		for _, addr := range addresses {
 			addr := *addr
+			sem <- struct{}{}
 			go func() {
 				defer wg.Done()
+				defer func() { <-sem }()
 				peer, err := c.connectToPeer(&addr)
 				if err == nil {
 					c.HandlePeerSuccess(peer)
