@@ -25,7 +25,7 @@ type AnnounceResp struct {
 	PeerAddresses []*net.TCPAddr
 }
 
-func (c *Client) GetPeers() ([]*net.TCPAddr, error) {
+func (c *Client) GetPeerAddresses() ([]*net.TCPAddr, error) {
 	connResp, err := retry(10, c.TrackerConn, func() (ConnResp, error) {
 		connResp, err := c.RequestConn()
 		if err != nil {

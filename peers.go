@@ -72,12 +72,12 @@ func (c *Client) HandlePeerFailure(address *net.TCPAddr) {
 	if peer == nil {
 		return
 	}
-	if time.Since(peer.lastConnected) > time.Second*30 {
+	if time.Since(peer.lastConnected) > time.Minute*3 {
 		c.ActivePeers = slices.Delete(c.ActivePeers, index, index+1)
 	}
 }
 
-func (c *Client) TrackActivePeers(addresses []*net.TCPAddr) {
+func (c *Client) HealthcheckPeers(addresses []*net.TCPAddr) {
 	for {
 		var wg sync.WaitGroup
 		wg.Add(len(addresses))
@@ -95,6 +95,6 @@ func (c *Client) TrackActivePeers(addresses []*net.TCPAddr) {
 		}
 		wg.Wait()
 		fmt.Printf("active peers: %d\ninactive peers: %d\n", len(c.ActivePeers), len(addresses)-len(c.ActivePeers))
-		time.Sleep(time.Second * 10)
+		time.Sleep(2 * time.Minute)
 	}
 }

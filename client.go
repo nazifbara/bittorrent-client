@@ -30,10 +30,10 @@ func newClient(torrent *Torrent, trackerConn *net.UDPConn, TrackerAddr *net.UDPA
 }
 
 func (c *Client) Start() error {
-	peers, err := c.GetPeers()
+	addresses, err := c.GetPeerAddresses()
 	if err != nil {
 		return err
 	}
-	go c.TrackActivePeers(peers)
+	go c.HealthcheckPeers(addresses)
 	return nil
 }
