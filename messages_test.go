@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"reflect"
 	"testing"
 )
 
@@ -136,17 +137,20 @@ func TestBuildBitfield(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		payload []byte
+		payload []bool
 		want    []byte
 	}{
-		{name: "empty bitfield", payload: []byte{}, want: []byte{0, 0, 0, 1, 5}},
-		{name: "single byte bitfield", payload: []byte{0x80}, want: []byte{0, 0, 0, 2, 5, 0x80}},
-		{name: "multi-byte bitfield", payload: []byte{0xAA, 0x55}, want: []byte{0, 0, 0, 3, 5, 0xAA, 0x55}},
+		{name: "empty bitfield", payload: []bool{}, want: []byte{0, 0, 0, 1, 5}},
+		{name: "single byte bitfield", payload: []bool{true, false, false, false, false, false, false, false}, want: []byte{0, 0, 0, 2, 5, 0x80}},
+		{name: "multi-byte bitfield", payload: []bool{true, false, true, false, true, false, true, false, false, true, false, true, false, true, false, true}, want: []byte{0, 0, 0, 3, 5, 0xAA, 0x55}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := client.BuildBitfield(tc.payload)
+			got, err := client.BuildBitfield(tc.payload)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if !bytes.Equal(got, tc.want) {
 				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
 			}
@@ -304,6 +308,140 @@ func TestBuildPiece(t *testing.T) {
 			}
 			if !bytes.Equal(got[13:], tc.block) {
 				t.Fatalf("%s: expected block %v, got %v", tc.name, tc.block, got[13:])
+			}
+		})
+	}
+}
+
+func TestParseMessage(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   []byte
+		want    Message
+		wantErr string
+	}{
+		{name: "keep alive", input: []byte{0, 0, 0, 0}, want: Message{Size: 0}},
+		{name: "choke", input: []byte{0, 0, 0, 1, 0}, want: Message{Size: 1, ID: 0}},
+		{name: "have", input: []byte{0, 0, 0, 5, 4, 0, 0, 0, 42}, want: Message{Size: 5, ID: 4, payload: []byte{0, 0, 0, 42}}},
+		{name: "truncated payload", input: []byte{0, 0, 0, 2, 0}, wantErr: "message unexpectedly short"},
+		{name: "too short", input: []byte{0, 0, 0}, wantErr: "message unexpectedly short"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseMessage(tc.input)
+			if tc.wantErr != "" {
+				if err == nil || err.Error() != tc.wantErr {
+					t.Fatalf("expected error %q, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.Size != tc.want.Size || got.ID != tc.want.ID || !bytes.Equal(got.payload, tc.want.payload) {
+				t.Fatalf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParsePayloads(t *testing.T) {
+	tests := []struct {
+		name    string
+		fn      func([]byte) (any, error)
+		input   []byte
+		want    any
+		wantErr string
+	}{
+		{
+			name: "request cancel payload",
+			fn: func(b []byte) (any, error) {
+				return parseRequestCancelPayload(b)
+			},
+			input: []byte{0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3},
+			want:  RequestCancelPayload{Index: 1, Begin: 2, Length: 3},
+		},
+		{
+			name: "request cancel invalid length",
+			fn: func(b []byte) (any, error) {
+				return parseRequestCancelPayload(b)
+			},
+			input:   []byte{0, 0, 0, 1},
+			wantErr: payloadSizeErr.Error(),
+		},
+		{
+			name: "block payload",
+			fn: func(b []byte) (any, error) {
+				return parseBlockPayload(b)
+			},
+			input: []byte{0, 0, 0, 1, 0, 0, 0, 2, 9, 8, 7},
+			want:  BlockPayload{Index: 1, Begin: 2, Block: []byte{9, 8, 7}},
+		},
+		{
+			name: "block payload invalid length",
+			fn: func(b []byte) (any, error) {
+				return parseBlockPayload(b)
+			},
+			input:   []byte{0, 0, 0, 1, 0, 0, 0},
+			wantErr: payloadSizeErr.Error(),
+		},
+		{
+			name: "port payload",
+			fn: func(b []byte) (any, error) {
+				return parsePortPayload(b)
+			},
+			input: []byte{0x01, 0x02},
+			want:  PortPayload{Port: 258},
+		},
+		{
+			name: "port payload invalid length",
+			fn: func(b []byte) (any, error) {
+				return parsePortPayload(b)
+			},
+			input:   []byte{0x01},
+			wantErr: payloadSizeErr.Error(),
+		},
+		{
+			name: "have payload",
+			fn: func(b []byte) (any, error) {
+				return parseHavePayload(b)
+			},
+			input: []byte{0, 0, 0, 42},
+			want:  HavePayload{Index: 42},
+		},
+		{
+			name: "have payload invalid length",
+			fn: func(b []byte) (any, error) {
+				return parseHavePayload(b)
+			},
+			input:   []byte{0, 0},
+			wantErr: payloadSizeErr.Error(),
+		},
+		{
+			name: "bitfield payload",
+			fn: func(b []byte) (any, error) {
+				return parseBitfieldPayload(b), nil
+			},
+			input: []byte{0x80},
+			want:  BitfieldPayload{Bitfield: []bool{true, false, false, false, false, false, false, false}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tc.fn(tc.input)
+			if tc.wantErr != "" {
+				if err == nil || err.Error() != tc.wantErr {
+					t.Fatalf("expected error %q, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("got %#v, want %#v", got, tc.want)
 			}
 		})
 	}

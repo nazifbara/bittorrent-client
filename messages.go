@@ -2,23 +2,100 @@ package main
 
 import (
 	"encoding/binary"
-	"io"
-	"net"
+	"errors"
 )
 
-func readWholeMsg(conn *net.TCPConn) ([]byte, error) {
-	lenBuf := make([]byte, 4)
-	if _, err := io.ReadFull(conn, lenBuf); err != nil {
-		return nil, err
-	}
-	length := binary.BigEndian.Uint32(lenBuf)
+type Message struct {
+	Size    uint32
+	ID      uint8
+	payload []byte
+}
 
-	msg := make([]byte, 4+length)
-	copy(msg[:4], lenBuf)
-	if _, err := io.ReadFull(conn, msg[4:]); err != nil {
-		return nil, err
+type HavePayload struct {
+	Index uint32
+}
+
+type BitfieldPayload struct {
+	Bitfield []bool
+}
+
+type PortPayload struct {
+	Port uint16
+}
+
+type RequestCancelPayload struct {
+	Index  uint32
+	Begin  uint32
+	Length uint32
+}
+
+type BlockPayload struct {
+	Index uint32
+	Begin uint32
+	Block []byte
+}
+
+var payloadSizeErr = errors.New("incorrect payload size")
+
+func parseMessage(b []byte) (Message, error) {
+	if len(b) < 4 {
+		return Message{}, errors.New("message unexpectedly short")
 	}
-	return msg, nil
+
+	message := Message{Size: binary.BigEndian.Uint32(b[:4])}
+	if message.Size == 0 {
+		return message, nil
+	}
+
+	payloadLength := int(message.Size) - 1
+	minSize := 4 + 1 + payloadLength
+	if len(b) < minSize {
+		return Message{Size: message.Size}, errors.New("message unexpectedly short")
+	}
+
+	message.ID = uint8(b[4])
+	message.payload = b[5 : 5+payloadLength]
+	return message, nil
+}
+
+func parseRequestCancelPayload(b []byte) (RequestCancelPayload, error) {
+	if len(b) != 12 {
+		return RequestCancelPayload{}, payloadSizeErr
+	}
+	return RequestCancelPayload{
+		Index:  binary.BigEndian.Uint32(b[:4]),
+		Begin:  binary.BigEndian.Uint32(b[4:8]),
+		Length: binary.BigEndian.Uint32(b[8:]),
+	}, nil
+}
+
+func parseBlockPayload(b []byte) (BlockPayload, error) {
+	if len(b) < 8 {
+		return BlockPayload{}, payloadSizeErr
+	}
+	return BlockPayload{
+		Index: binary.BigEndian.Uint32(b[:4]),
+		Begin: binary.BigEndian.Uint32(b[4:8]),
+		Block: b[8:],
+	}, nil
+}
+
+func parsePortPayload(b []byte) (PortPayload, error) {
+	if len(b) != 2 {
+		return PortPayload{}, payloadSizeErr
+	}
+	return PortPayload{Port: binary.BigEndian.Uint16(b)}, nil
+}
+
+func parseBitfieldPayload(b []byte) BitfieldPayload {
+	return BitfieldPayload{Bitfield: bytesToBits(b)}
+}
+
+func parseHavePayload(b []byte) (HavePayload, error) {
+	if len(b) != 4 {
+		return HavePayload{}, payloadSizeErr
+	}
+	return HavePayload{Index: binary.BigEndian.Uint32(b)}, nil
 }
 
 func (c *Client) BuildHandShake() []byte {
@@ -87,17 +164,17 @@ func (c *Client) BuildHave(pieceIdx uint32) []byte {
 	return b
 }
 
-func (c *Client) BuildBitfield(payload []byte) []byte {
-	payloadSize := len(payload)
-	// 4 bytes length + 1 byte message id + payload size
-	b := make([]byte, 0, 5+payloadSize)
-	// length
-	b = binary.BigEndian.AppendUint32(b, uint32(1+payloadSize))
-	// message id
+func (c *Client) BuildBitfield(payload []bool) ([]byte, error) {
+	bitBytes, err := bitsToBytes(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	b := make([]byte, 0, 5+len(bitBytes))
+	b = binary.BigEndian.AppendUint32(b, uint32(1+len(bitBytes)))
 	b = append(b, 5)
-	// bitfield
-	b = append(b, payload...)
-	return b
+	b = append(b, bitBytes...)
+	return b, nil
 }
 
 func (c *Client) BuildRequest(pieceIdx, begin, pieceLength uint32) []byte {
