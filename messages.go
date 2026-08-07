@@ -1,6 +1,25 @@
 package main
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"io"
+	"net"
+)
+
+func readWholeMsg(conn *net.TCPConn) ([]byte, error) {
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(conn, lenBuf); err != nil {
+		return nil, err
+	}
+	length := binary.BigEndian.Uint32(lenBuf)
+
+	msg := make([]byte, 4+length)
+	copy(msg[:4], lenBuf)
+	if _, err := io.ReadFull(conn, msg[4:]); err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
 
 func (c *Client) BuildHandShake() []byte {
 	b := make([]byte, 0, 68)

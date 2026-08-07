@@ -35,6 +35,6 @@ func run(torrentPath string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	client.TrackConnectedPeers(peers)
+	client.TrackActivePeers(peers)
 	return 0, nil
 }

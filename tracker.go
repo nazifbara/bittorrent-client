@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"net/url"
@@ -25,15 +26,23 @@ type AnnounceResp struct {
 }
 
 func (c *Client) GetPeers() ([]*net.TCPAddr, error) {
-	return retry(20, c.TrackerConn, func() ([]*net.TCPAddr, error) {
+	connResp, err := retry(10, c.TrackerConn, func() (ConnResp, error) {
 		connResp, err := c.RequestConn()
 		if err != nil {
-			return []*net.TCPAddr{}, err
+			return ConnResp{}, err
 		}
+		fmt.Println("connected to tracker")
+		return connResp, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return retry(10, c.TrackerConn, func() ([]*net.TCPAddr, error) {
 		peers, err := c.Announce(connResp)
 		if err != nil {
 			return []*net.TCPAddr{}, err
 		}
+		fmt.Println("announced!")
 		return peers, nil
 	})
 }
@@ -42,7 +51,7 @@ func (c *Client) Announce(connResp ConnResp) ([]*net.TCPAddr, error) {
 	if _, err := c.TrackerConn.Write(c.BuildAnnounceReq(connResp.ConnectionID)); err != nil {
 		return []*net.TCPAddr{}, err
 	}
-	respBuffer := make([]byte, 1024)
+	respBuffer := make([]byte, 120)
 	n, err := c.TrackerConn.Read(respBuffer)
 	if err != nil {
 		return []*net.TCPAddr{}, err
@@ -52,11 +61,11 @@ func (c *Client) Announce(connResp ConnResp) ([]*net.TCPAddr, error) {
 }
 
 func (c *Client) RequestConn() (ConnResp, error) {
-	respBuffer := make([]byte, 1024)
+	respBuffer := make([]byte, 16)
 	if _, err := c.TrackerConn.Write(buildConnReq()); err != nil {
 		return ConnResp{}, err
 	}
-	n, err := c.TrackerConn.Read(respBuffer)
+	n, err := io.ReadFull(c.TrackerConn, respBuffer)
 	if err != nil {
 		return ConnResp{}, err
 	}
