@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -31,10 +34,14 @@ func run(torrentPath string) (int, error) {
 	}
 	defer conn.Close()
 	client := newClient(torrent, conn, addr)
-	peers, err := client.GetPeers()
-	if err != nil {
+	var clientErr error
+	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	go func() {
+		clientErr = client.Start()
+	}()
+	<-ctx.Done()
+	if clientErr != nil {
 		return 1, err
 	}
-	client.TrackActivePeers(peers)
 	return 0, nil
 }

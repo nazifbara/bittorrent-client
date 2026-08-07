@@ -28,3 +28,12 @@ func newClient(torrent *Torrent, trackerConn *net.UDPConn, TrackerAddr *net.UDPA
 		Retries:     20,
 	}
 }
+
+func (c *Client) Start() error {
+	peers, err := c.GetPeers()
+	if err != nil {
+		return err
+	}
+	go c.TrackActivePeers(peers)
+	return nil
+}
