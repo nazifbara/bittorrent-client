@@ -3,21 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"time"
 )
-
-func (c *Client) HandleDownloads() {
-	for {
-		handlingMap := make(map[string]bool)
-		for _, peer := range c.ActivePeers {
-			if !handlingMap[peer.TCPAddr.String()] {
-				handlingMap[peer.TCPAddr.String()] = true
-				go c.Download(peer)
-			}
-		}
-		time.Sleep(time.Second)
-	}
-}
 
 func (c *Client) Download(peer *Peer) {
 	var buffer []byte
@@ -74,18 +60,25 @@ func (c *Client) HandleMessage(peer *Peer, msg []byte) {
 }
 
 func (c *Client) HandleUnchock(peer *Peer) {
-	go func() {
-		for {
-			peer.Write(c.BuildRequest(25, 0, 16384))
-		}
-	}()
+	if c.PieceState.Done {
+		return
+	}
+	peer.Write(c.BuildRequest(c.PieceState.Index, c.PieceState.Begin, 16384))
+	c.PieceState.Requested = true
 }
 
 func (c *Client) HandleBitfield(peer *Peer, msg Message) {
 	payload := parseBitfieldPayload(msg.Payload)
-	if payload.Bitfield[25] {
-		peer.Write(c.BuildInterested())
-		fmt.Printf("%v has piece  from bitfield\n", peer.TCPAddr)
+	if c.PieceState.Requested {
+		return
+	}
+	for i, complete := range payload.Bitfield {
+		if complete {
+			c.PieceState = PieceState{Index: uint32(i), Done: false, Begin: 0}
+			peer.Write(c.BuildInterested())
+			fmt.Printf("%v has piece  from bitfield\n", peer.TCPAddr)
+			break
+		}
 	}
 }
 
@@ -94,5 +87,14 @@ func (c *Client) HandleBlock(peer *Peer, msg Message) {
 	if err != nil {
 		return
 	}
-	fmt.Printf("%v sent sent a block: {begin=%d,index=%d,size=%d}\n", peer.TCPAddr, payload.Begin, payload.Index, len(payload.Block))
+	if payload.Index == c.PieceState.Index {
+		c.PieceState.mu.Lock()
+		defer c.PieceState.mu.Unlock()
+		c.PieceState.Bytes = append(c.PieceState.Bytes, payload.Block...)
+		c.PieceState.Begin = uint32(len(c.PieceState.Bytes))
+		c.PieceState.Done = c.Torrent.PieceLength == int(c.PieceState.Begin)
+		fmt.Printf("received block from %v: {begin=%d,index=%d,size=%d}\n", peer.TCPAddr, payload.Begin, payload.Index, len(payload.Block))
+		fmt.Printf("Dowonload: %d / %d\n", c.PieceState.Begin, c.Torrent.PieceLength)
+		peer.Write(c.BuildRequest(c.PieceState.Index, c.PieceState.Begin, 16384))
+	}
 }

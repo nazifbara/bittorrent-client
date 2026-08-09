@@ -6,6 +6,15 @@ import (
 	"time"
 )
 
+type PieceState struct {
+	Index     uint32
+	Begin     uint32
+	Bytes     []byte
+	Requested bool
+	mu        sync.Mutex
+	Done      bool
+}
+
 type Peer struct {
 	*net.TCPConn
 	*net.TCPAddr
@@ -17,6 +26,7 @@ type Client struct {
 	TrackerAddr *net.UDPAddr
 	Retries     int
 	ActivePeers []*Peer
+	PieceState  PieceState
 	mu          sync.Mutex
 }
 
@@ -35,6 +45,6 @@ func (c *Client) Start() error {
 		return err
 	}
 	go c.HealthcheckPeers(addresses)
-	// go c.HandleDownloads()
+
 	return nil
 }

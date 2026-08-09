@@ -41,6 +41,7 @@ func (bt BencodeTorrent) ToTorrent() (Torrent, error) {
 		Length:       bt.Info.Length,
 		AnnounceList: bt.AnnounceList,
 		Pieces:       bt.Info.Pieces,
+		PieceLength:  int(bt.Info.PieceLength),
 	}, nil
 }
 
