@@ -322,7 +322,7 @@ func TestParseMessage(t *testing.T) {
 	}{
 		{name: "keep alive", input: []byte{0, 0, 0, 0}, want: Message{Size: 0}},
 		{name: "choke", input: []byte{0, 0, 0, 1, 0}, want: Message{Size: 1, ID: 0}},
-		{name: "have", input: []byte{0, 0, 0, 5, 4, 0, 0, 0, 42}, want: Message{Size: 5, ID: 4, payload: []byte{0, 0, 0, 42}}},
+		{name: "have", input: []byte{0, 0, 0, 5, 4, 0, 0, 0, 42}, want: Message{Size: 5, ID: 4, Payload: []byte{0, 0, 0, 42}}},
 		{name: "truncated payload", input: []byte{0, 0, 0, 2, 0}, wantErr: "message unexpectedly short"},
 		{name: "too short", input: []byte{0, 0, 0}, wantErr: "message unexpectedly short"},
 	}
@@ -339,7 +339,7 @@ func TestParseMessage(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got.Size != tc.want.Size || got.ID != tc.want.ID || !bytes.Equal(got.payload, tc.want.payload) {
+			if got.Size != tc.want.Size || got.ID != tc.want.ID || !bytes.Equal(got.Payload, tc.want.Payload) {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
 			}
 		})

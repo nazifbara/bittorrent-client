@@ -8,7 +8,7 @@ import (
 type Message struct {
 	Size    uint32
 	ID      uint8
-	payload []byte
+	Payload []byte
 }
 
 type HavePayload struct {
@@ -54,7 +54,7 @@ func parseMessage(b []byte) (Message, error) {
 	}
 
 	message.ID = uint8(b[4])
-	message.payload = b[5 : 5+payloadLength]
+	message.Payload = b[5 : 5+payloadLength]
 	return message, nil
 }
 

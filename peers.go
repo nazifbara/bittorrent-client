@@ -17,12 +17,12 @@ func (c *Client) connectToPeer(address *net.TCPAddr) (*Peer, error) {
 	defer c.mu.Unlock()
 	_, existingPeer := c.getPeerByAddr(address)
 	if existingPeer != nil {
-		fmt.Printf("keep-alive-->%v\n", existingPeer.TCPAddr)
+		// fmt.Printf("keep-alive-->%v\n", existingPeer.TCPAddr)
 		if _, err := existingPeer.Write(c.BuildKeepAlive()); err != nil {
-			fmt.Printf("keep-alive xxx %v\n", existingPeer.TCPAddr)
+			// fmt.Printf("keep-alive xxx %v\n", existingPeer.TCPAddr)
 			return nil, fmt.Errorf("connection lost with %v", existingPeer.TCPAddr)
 		}
-		fmt.Printf("keep-alive<--%v\n", existingPeer.TCPAddr)
+		// fmt.Printf("keep-alive<--%v\n", existingPeer.TCPAddr)
 		return existingPeer, nil
 	}
 	conn, err := net.DialTimeout("tcp", address.String(), 300*time.Millisecond)
@@ -79,6 +79,7 @@ func (c *Client) HandlePeerFailure(address *net.TCPAddr) {
 
 func (c *Client) HealthcheckPeers(addresses []*net.TCPAddr) {
 	sem := make(chan struct{}, 10)
+	handlingDownloadMap := make(map[string]bool)
 	for {
 		var wg sync.WaitGroup
 		wg.Add(len(addresses))
@@ -90,6 +91,10 @@ func (c *Client) HealthcheckPeers(addresses []*net.TCPAddr) {
 				defer func() { <-sem }()
 				peer, err := c.connectToPeer(&addr)
 				if err == nil {
+					if !handlingDownloadMap[peer.TCPAddr.String()] {
+						handlingDownloadMap[peer.TCPAddr.String()] = true
+						go c.Download(peer)
+					}
 					c.HandlePeerSuccess(peer)
 				} else {
 					c.HandlePeerFailure(&addr)

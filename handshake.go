@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
 )
@@ -14,13 +13,13 @@ func (c *Client) Handshake(peer *Peer) error {
 	if _, err := peer.Write(c.BuildHandShake()); err != nil {
 		return err
 	}
-	fmt.Printf("handshake-->%v\n", peer.TCPAddr)
-	resp, err := readHandshake(peer.TCPConn)
+	// fmt.Printf("handshake-->%v\n", peer.TCPAddr)
+	_, err := readHandshake(peer.TCPConn)
 	if err != nil {
-		fmt.Printf("handshake xxx %v\n", peer.TCPAddr)
+		// fmt.Printf("handshake xxx %v\n", peer.TCPAddr)
 		return err
 	}
-	fmt.Printf("%d<--handshake(%v)\n", len(resp), peer.TCPAddr)
+	// fmt.Printf("%d<--handshake(%v)\n", len(resp), peer.TCPAddr)
 	return nil
 }
 

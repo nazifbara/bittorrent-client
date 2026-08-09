@@ -35,5 +35,6 @@ func (c *Client) Start() error {
 		return err
 	}
 	go c.HealthcheckPeers(addresses)
+	// go c.HandleDownloads()
 	return nil
 }
