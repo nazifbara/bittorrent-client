@@ -24,7 +24,6 @@ type Client struct {
 	Torrent     *Torrent
 	TrackerConn *net.UDPConn
 	TrackerAddr *net.UDPAddr
-	Retries     int
 	ActivePeers []*Peer
 	PieceState  PieceState
 	mu          sync.Mutex
@@ -35,7 +34,6 @@ func newClient(torrent *Torrent, trackerConn *net.UDPConn, TrackerAddr *net.UDPA
 		Torrent:     torrent,
 		TrackerConn: trackerConn,
 		TrackerAddr: TrackerAddr,
-		Retries:     20,
 	}
 }
 
