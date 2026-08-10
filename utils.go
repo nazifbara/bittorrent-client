@@ -56,6 +56,5 @@ func retry[T any](retries int, conn net.Conn, operation func() (T, error)) (T, e
 		}
 		break
 	}
-	conn.SetDeadline(time.Time{})
 	return result, lastErr
 }

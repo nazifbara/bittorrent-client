@@ -102,7 +102,7 @@ func (c *Client) BuildAnnounceReq(connectID []byte) []byte {
 	// num want
 	b = binary.BigEndian.AppendUint32(b, uint32(0xFFFFFFFF))
 	// port
-	b = binary.BigEndian.AppendUint16(b, uint16(c.TrackerAddr.Port))
+	b = binary.BigEndian.AppendUint16(b, uint16(c.TrackerConn.LocalAddr().(*net.UDPAddr).Port))
 	return b
 }
 

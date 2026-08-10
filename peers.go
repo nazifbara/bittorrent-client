@@ -13,28 +13,18 @@ func (c *Client) connectToPeer(address *net.TCPAddr) (*Peer, error) {
 	if address == nil {
 		return nil, errors.New("address is nil")
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	_, existingPeer := c.getPeerByAddr(address)
 	if existingPeer != nil {
-		// fmt.Printf("keep-alive-->%v\n", existingPeer.TCPAddr)
 		if _, err := existingPeer.Write(c.BuildKeepAlive()); err != nil {
-			// fmt.Printf("keep-alive xxx %v\n", existingPeer.TCPAddr)
 			return nil, fmt.Errorf("connection lost with %v", existingPeer.TCPAddr)
 		}
-		// fmt.Printf("keep-alive<--%v\n", existingPeer.TCPAddr)
 		return existingPeer, nil
 	}
-	conn, err := net.DialTimeout("tcp", address.String(), 300*time.Millisecond)
+	conn, err := net.DialTCP("tcp", nil, address)
 	if err != nil {
 		return nil, err
 	}
-	tcpConn, ok := conn.(*net.TCPConn)
-	if !ok {
-		conn.Close()
-		return nil, fmt.Errorf("unexpected connection type")
-	}
-	peer := &Peer{TCPConn: tcpConn, TCPAddr: address}
+	peer := &Peer{TCPConn: conn, TCPAddr: address}
 	if err := c.Handshake(peer); err != nil {
 		peer.Close()
 		return nil, fmt.Errorf("handshake failed with %v", peer.TCPAddr)
