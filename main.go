@@ -40,6 +40,7 @@ func run(torrentPath string) (int, error) {
 		clientErr = client.Start()
 	}()
 	<-ctx.Done()
+	client.File.Close()
 	if clientErr != nil {
 		return 1, err
 	}

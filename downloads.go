@@ -47,9 +47,6 @@ func (c *Client) HandleMessage(peer *Peer, msg []byte) {
 	if err != nil {
 		return
 	}
-	// if message.ID > 0 {
-	// 	fmt.Printf("%v message ID: %v, size: %d\n", peer.TCPAddr, message.ID, message.Size)
-	// }
 	switch message.ID {
 	case 1:
 		c.HandleUnchock(peer)

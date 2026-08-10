@@ -54,7 +54,9 @@ func (bt BencodeTorrent) ToTorrent() (Torrent, error) {
 	if err != nil {
 		return Torrent{}, err
 	}
+
 	return Torrent{
+		Name:         bt.Info.Name,
 		Announce:     bt.Announce,
 		InfoHash:     infoHash,
 		Length:       bt.Info.Length,
