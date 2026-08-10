@@ -58,7 +58,7 @@ func (c *Client) HandleMessage(peer *Peer, msg []byte) {
 }
 
 func (c *Client) HandleUnchock(peer *Peer) {
-	if c.PieceState.Done {
+	if c.PieceState.Done || c.PieceState.peer != nil {
 		return
 	}
 	peer.Write(c.BuildRequest(c.PieceState.Index, c.PieceState.Begin, c.BlockSize))
@@ -97,6 +97,7 @@ func (c *Client) HandleBlock(peer *Peer, msg Message) {
 			peer.Write(c.BuildRequest(c.PieceState.Index, c.PieceState.Begin, c.BlockSize))
 		} else {
 			fmt.Printf("Piece %d completed, isHashValid=%v", c.PieceState.Index, sha1.Sum(c.PieceState.Bytes) == c.Torrent.PieceHashes[c.PieceState.Index])
+			c.File.WriteAt(c.PieceState.Bytes, int64(c.PieceState.Index)*int64(c.Torrent.PieceLength))
 		}
 	}
 }
