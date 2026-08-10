@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
 )
@@ -63,13 +64,13 @@ func (c *Client) HandleUnchock(peer *Peer) {
 	if c.PieceState.Done {
 		return
 	}
-	peer.Write(c.BuildRequest(c.PieceState.Index, c.PieceState.Begin, 16384))
-	c.PieceState.Requested = true
+	peer.Write(c.BuildRequest(c.PieceState.Index, c.PieceState.Begin, c.BlockSize))
+	c.PieceState.peer = peer
 }
 
 func (c *Client) HandleBitfield(peer *Peer, msg Message) {
 	payload := parseBitfieldPayload(msg.Payload)
-	if c.PieceState.Requested {
+	if c.PieceState.peer != nil {
 		return
 	}
 	for i, complete := range payload.Bitfield {
@@ -87,7 +88,7 @@ func (c *Client) HandleBlock(peer *Peer, msg Message) {
 	if err != nil {
 		return
 	}
-	if payload.Index == c.PieceState.Index {
+	if payload.Index == c.PieceState.Index && c.PieceState.peer.TCPAddr == peer.TCPAddr && !c.PieceState.Done {
 		c.PieceState.mu.Lock()
 		defer c.PieceState.mu.Unlock()
 		c.PieceState.Bytes = append(c.PieceState.Bytes, payload.Block...)
@@ -95,6 +96,10 @@ func (c *Client) HandleBlock(peer *Peer, msg Message) {
 		c.PieceState.Done = c.Torrent.PieceLength == int(c.PieceState.Begin)
 		fmt.Printf("received block from %v: {begin=%d,index=%d,size=%d}\n", peer.TCPAddr, payload.Begin, payload.Index, len(payload.Block))
 		fmt.Printf("Dowonload: %d / %d\n", c.PieceState.Begin, c.Torrent.PieceLength)
-		peer.Write(c.BuildRequest(c.PieceState.Index, c.PieceState.Begin, 16384))
+		if !c.PieceState.Done {
+			peer.Write(c.BuildRequest(c.PieceState.Index, c.PieceState.Begin, c.BlockSize))
+		} else {
+			fmt.Printf("Piece %d completed, isHashValid=%v", c.PieceState.Index, sha1.Sum(c.PieceState.Bytes) == c.Torrent.PieceHashes[c.PieceState.Index])
+		}
 	}
 }

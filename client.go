@@ -7,12 +7,12 @@ import (
 )
 
 type PieceState struct {
-	Index     uint32
-	Begin     uint32
-	Bytes     []byte
-	Requested bool
-	mu        sync.Mutex
-	Done      bool
+	Index uint32
+	Begin uint32
+	Bytes []byte
+	peer  *Peer
+	mu    sync.Mutex
+	Done  bool
 }
 
 type Peer struct {
@@ -26,6 +26,7 @@ type Client struct {
 	TrackerAddr *net.UDPAddr
 	ActivePeers []*Peer
 	PieceState  PieceState
+	BlockSize   uint32
 	mu          sync.Mutex
 }
 
@@ -34,6 +35,7 @@ func newClient(torrent *Torrent, trackerConn *net.UDPConn, TrackerAddr *net.UDPA
 		Torrent:     torrent,
 		TrackerConn: trackerConn,
 		TrackerAddr: TrackerAddr,
+		BlockSize:   16384,
 	}
 }
 

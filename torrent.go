@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/jackpal/bencode-go"
@@ -14,7 +15,6 @@ type Torrent struct {
 	InfoHash     [20]byte
 	PieceHashes  [][20]byte
 	PieceLength  int
-	Pieces       string
 	Length       uint64
 	Name         string
 	AnnounceList [][]string
@@ -27,22 +27,6 @@ type BencodeTorrent struct {
 	CreatedBy    string     `bencode:"created by,omitempty"`
 	CreationDate int64      `bencode:"creation date,omitempty"`
 	Info         InfoDict   `bencode:"info"`
-}
-
-func (bt BencodeTorrent) ToTorrent() (Torrent, error) {
-	var buf bytes.Buffer
-	if err := bencode.Marshal(&buf, bt.Info); err != nil {
-		return Torrent{}, err
-	}
-	infoHash := sha1.Sum(buf.Bytes())
-	return Torrent{
-		Announce:     bt.Announce,
-		InfoHash:     infoHash,
-		Length:       bt.Info.Length,
-		AnnounceList: bt.AnnounceList,
-		Pieces:       bt.Info.Pieces,
-		PieceLength:  int(bt.Info.PieceLength),
-	}, nil
 }
 
 // InfoDict represents the "info" dictionary within the torrent metainfo.
@@ -58,6 +42,51 @@ type InfoDict struct {
 type FileDict struct {
 	Length int64    `bencode:"length"`
 	Path   []string `bencode:"path"`
+}
+
+func (bt BencodeTorrent) ToTorrent() (Torrent, error) {
+	var buf bytes.Buffer
+	if err := bencode.Marshal(&buf, bt.Info); err != nil {
+		return Torrent{}, err
+	}
+	infoHash := sha1.Sum(buf.Bytes())
+	pieceHashes, err := getPieceHashes(bt.Info)
+	if err != nil {
+		return Torrent{}, err
+	}
+	return Torrent{
+		Announce:     bt.Announce,
+		InfoHash:     infoHash,
+		Length:       bt.Info.Length,
+		AnnounceList: bt.AnnounceList,
+		PieceHashes:  pieceHashes,
+		PieceLength:  int(bt.Info.PieceLength),
+	}, nil
+}
+
+func getPieceHashes(info InfoDict) ([][20]byte, error) {
+	// A SHA-1 hash is exactly 20 bytes long
+	const hashSize = 20
+
+	// Quick validation: the total length must be a multiple of 20
+	if len(info.Pieces)%hashSize != 0 {
+		return nil, fmt.Errorf("malformed pieces string: length %d is not a multiple of %d", len(info.Pieces), hashSize)
+	}
+
+	numPieces := len(info.Pieces) / hashSize
+	hashes := make([][20]byte, 0, numPieces)
+
+	// Loop through the string 20 bytes at a time
+	for i := 0; i < len(info.Pieces); i += hashSize {
+		var hash [20]byte
+
+		// Copy 20 bytes from the string into the fixed-size array
+		copy(hash[:], info.Pieces[i:i+hashSize])
+
+		hashes = append(hashes, hash)
+	}
+
+	return hashes, nil
 }
 
 func openTorrent(filePath string) (*Torrent, error) {
