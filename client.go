@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"sync"
@@ -40,6 +41,7 @@ type Client struct {
 	CompletedJobs uint32
 	BlockSize     uint32
 	mu            sync.Mutex
+	startedAt     time.Time
 }
 
 const blockSize uint32 = 16384
@@ -72,6 +74,8 @@ func (c *Client) Start(annnounceList [][]string) error {
 	if err == nil {
 		c.PeerAddresses = addresses
 	}
+	c.startedAt = time.Now()
+	log.Println("⬇️ Downloading...")
 	go c.HealthcheckPeers()
 	return nil
 }

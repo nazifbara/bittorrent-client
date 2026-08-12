@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha1"
 	"encoding/binary"
 	"log"
 	"slices"
@@ -17,7 +16,7 @@ func (c *Client) Download(peer *Peer) {
 				return
 			}
 			c.mu.Lock()
-			n := min(len(c.ActivePeers), len(c.Queue))
+			n := min(len(c.ActivePeers)*8, len(c.Queue))
 			queueSnapshot := append([]*Job(nil), c.Queue[:n]...)
 			c.mu.Unlock()
 
@@ -44,7 +43,7 @@ func (c *Client) Download(peer *Peer) {
 					break
 				}
 			}
-			time.Sleep(250 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 		}
 	}()
 	for {
@@ -80,7 +79,7 @@ func (c *Client) Download(peer *Peer) {
 			buffer = buffer[total:]
 
 			c.HandleMessage(peer, msg)
-			time.Sleep(250 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 		}
 	}
 }
@@ -168,9 +167,7 @@ func (c *Client) HandleBlock(peer *Peer, msg Message) {
 	if pieceState.Done {
 		return
 	}
-	if payload.Index == uint32(c.Torrent.NumOfPieces-1) {
-		log.Printf("received block from %v: {begin=%d,index=%d,size=%d}\n", peer.TCPAddr, payload.Begin, payload.Index, len(payload.Block))
-	}
+
 	if int(payload.Begin) != pieceState.Begin {
 		log.Printf("Bad offset for piece %d\n", payload.Index)
 		return
@@ -185,15 +182,12 @@ func (c *Client) HandleBlock(peer *Peer, msg Message) {
 	c.mu.Lock()
 	c.Torrent.TotalDownloaded += uint64(len(payload.Block))
 	c.mu.Unlock()
-	log.Printf("Download piece %d: %d / %d from %v\n", payload.Index, pieceState.Begin, c.Torrent.PieceSize, peer.TCPAddr)
+	log.Printf("Progress %d / %d\n", c.Torrent.TotalDownloaded, c.Torrent.ContentSize)
 	if pieceState.Done {
 		c.mu.Lock()
 		c.CompletedJobs++
 		c.Queue = slices.DeleteFunc(c.Queue, func(j *Job) bool { return j.Index == payload.Index })
 		c.mu.Unlock()
-		log.Printf("Piece %d completed, isHashValid=%v\n", payload.Index, sha1.Sum(pieceState.Bytes) == c.Torrent.PieceHashes[payload.Index])
-		log.Printf("Jobs completed: %d\n", c.CompletedJobs)
-		log.Printf("Jobs left: %d\n", len(c.Queue))
 
 		offset := int64(payload.Index) * int64(c.Torrent.PieceSize)
 		go func() {
@@ -204,7 +198,7 @@ func (c *Client) HandleBlock(peer *Peer, msg Message) {
 				log.Printf("%d written to file\n", n)
 				c.Finished = c.Torrent.TotalDownloaded == c.Torrent.ContentSize
 				if c.Finished {
-					log.Println("✅✅✅✅✅✅✅✅✅✅ Download completed")
+					log.Printf("✅ Download completed in %v/n", time.Since(c.startedAt).Minutes())
 				}
 			}
 		}()
