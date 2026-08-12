@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"slices"
 	"sync"
@@ -15,16 +16,19 @@ func (c *Client) connectToPeer(address *net.TCPAddr) (*Peer, error) {
 	}
 	_, existingPeer := c.getPeerByAddr(address)
 	if existingPeer != nil {
-		if _, err := existingPeer.Write(c.BuildKeepAlive()); err != nil {
-			return nil, fmt.Errorf("connection lost with %v", existingPeer.TCPAddr)
-		}
 		return existingPeer, nil
 	}
-	conn, err := net.DialTCP("tcp", nil, address)
+	conn, err := net.DialTimeout("tcp", address.String(), 300*time.Millisecond)
 	if err != nil {
 		return nil, err
 	}
-	peer := &Peer{TCPConn: conn, TCPAddr: address}
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		conn.Close()
+		return nil, fmt.Errorf("connection is not *net.TCPConn: %T", conn)
+	}
+
+	peer := &Peer{TCPConn: tcpConn, TCPAddr: address}
 	if err := c.Handshake(peer); err != nil {
 		peer.Close()
 		return nil, fmt.Errorf("handshake failed with %v", peer.TCPAddr)
@@ -33,6 +37,8 @@ func (c *Client) connectToPeer(address *net.TCPAddr) (*Peer, error) {
 }
 
 func (c *Client) getPeerByAddr(address *net.TCPAddr) (int, *Peer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	index := slices.IndexFunc(c.ActivePeers, func(ap *Peer) bool {
 		return address.IP.Equal(ap.IP) && address.Port == ap.Port
 	})
@@ -43,37 +49,42 @@ func (c *Client) getPeerByAddr(address *net.TCPAddr) (int, *Peer) {
 }
 
 func (c *Client) HandlePeerSuccess(p *Peer) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	_, existingPeer := c.getPeerByAddr(p.TCPAddr)
 	if existingPeer == nil {
-		p.lastConnected = time.Now()
+		p.Bitfield = make([]bool, c.Torrent.NumOfPieces)
+		p.AliveAt = time.Now()
 		c.ActivePeers = append(c.ActivePeers, p)
 		return
 	}
-	existingPeer.lastConnected = time.Now()
+	existingPeer.AliveAt = time.Now()
 	p.Close()
 }
 
 func (c *Client) HandlePeerFailure(address *net.TCPAddr) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	index, peer := c.getPeerByAddr(address)
 	if peer == nil {
 		return
 	}
-	if time.Since(peer.lastConnected) > time.Minute*3 {
+	if time.Since(peer.AliveAt) > time.Minute*2 {
+		peer.IsInactive = true
 		c.ActivePeers = slices.Delete(c.ActivePeers, index, index+1)
 	}
 }
 
-func (c *Client) HealthcheckPeers(addresses []*net.TCPAddr) {
+func (c *Client) HealthcheckPeers() {
 	sem := make(chan struct{}, 10)
 	handlingDownloadMap := make(map[string]bool)
 	for {
+		if c.Finished {
+			break
+		}
+		if len(c.PeerAddresses) == 0 || (len(c.Queue) > 0 && len(c.ActivePeers) > 0) {
+			continue
+		}
+		log.Println("searching active peers...")
 		var wg sync.WaitGroup
-		wg.Add(len(addresses))
-		for _, addr := range addresses {
+		wg.Add(len(c.PeerAddresses))
+		for _, addr := range c.PeerAddresses {
 			addr := *addr
 			sem <- struct{}{}
 			go func() {
@@ -83,16 +94,18 @@ func (c *Client) HealthcheckPeers(addresses []*net.TCPAddr) {
 				if err == nil {
 					if !handlingDownloadMap[peer.TCPAddr.String()] {
 						handlingDownloadMap[peer.TCPAddr.String()] = true
+						fmt.Printf("Downloading from %v\n", peer.TCPAddr)
 						go c.Download(peer)
+						c.HandlePeerSuccess(peer)
 					}
-					c.HandlePeerSuccess(peer)
 				} else {
 					c.HandlePeerFailure(&addr)
 				}
 			}()
 		}
 		wg.Wait()
-		fmt.Printf("active peers: %d\ninactive peers: %d\n", len(c.ActivePeers), len(addresses)-len(c.ActivePeers))
-		time.Sleep(2 * time.Minute)
+		if len(c.ActivePeers) > 0 {
+			fmt.Printf("%d active peers out of %d\n", len(c.ActivePeers), len(c.PeerAddresses)-len(c.ActivePeers))
+		}
 	}
 }

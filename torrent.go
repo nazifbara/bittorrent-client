@@ -11,13 +11,16 @@ import (
 )
 
 type Torrent struct {
-	Announce     string
-	InfoHash     [20]byte
-	PieceHashes  [][20]byte
-	PieceLength  int
-	Length       uint64
-	Name         string
-	AnnounceList [][]string
+	Announce        string
+	InfoHash        [20]byte
+	PieceHashes     [][20]byte
+	PieceSize       uint64
+	FinalPieceSize  uint64
+	NumOfPieces     uint64
+	ContentSize     uint64
+	TotalDownloaded uint64
+	Name            string
+	AnnounceList    [][]string
 }
 
 type BencodeTorrent struct {
@@ -25,14 +28,14 @@ type BencodeTorrent struct {
 	AnnounceList [][]string `bencode:"announce-list,omitempty"`
 	Comment      string     `bencode:"comment,omitempty"`
 	CreatedBy    string     `bencode:"created by,omitempty"`
-	CreationDate int64      `bencode:"creation date,omitempty"`
+	CreationDate uint64     `bencode:"creation date,omitempty"`
 	Info         InfoDict   `bencode:"info"`
 }
 
 // InfoDict represents the "info" dictionary within the torrent metainfo.
 type InfoDict struct {
 	Name        string     `bencode:"name"`
-	PieceLength int64      `bencode:"piece length"`
+	PieceLength uint64     `bencode:"piece length"`
 	Pieces      string     `bencode:"pieces"`
 	Files       []FileDict `bencode:"files,omitempty"`
 	Length      uint64     `bencode:"length,omitempty"` // For single-file torrents
@@ -54,15 +57,25 @@ func (bt BencodeTorrent) ToTorrent() (Torrent, error) {
 	if err != nil {
 		return Torrent{}, err
 	}
-
+	contentSize := 0
+	if len(bt.Info.Files) == 0 {
+		contentSize = int(bt.Info.Length)
+	} else {
+		for _, file := range bt.Info.Files {
+			contentSize += int(file.Length)
+		}
+	}
+	finalPieceSize := int(contentSize) % int(bt.Info.PieceLength)
 	return Torrent{
-		Name:         bt.Info.Name,
-		Announce:     bt.Announce,
-		InfoHash:     infoHash,
-		Length:       bt.Info.Length,
-		AnnounceList: bt.AnnounceList,
-		PieceHashes:  pieceHashes,
-		PieceLength:  int(bt.Info.PieceLength),
+		Name:           bt.Info.Name,
+		Announce:       bt.Announce,
+		InfoHash:       infoHash,
+		NumOfPieces:    uint64(len(bt.Info.Pieces) / 20),
+		ContentSize:    uint64(contentSize),
+		AnnounceList:   bt.AnnounceList,
+		PieceHashes:    pieceHashes,
+		PieceSize:      bt.Info.PieceLength,
+		FinalPieceSize: uint64(finalPieceSize),
 	}, nil
 }
 

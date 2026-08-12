@@ -19,7 +19,7 @@ func (c *Client) Handshake(peer *Peer) error {
 		// fmt.Printf("handshake xxx %v\n", peer.TCPAddr)
 		return err
 	}
-	// fmt.Printf("%d<--handshake(%v)\n", len(resp), peer.TCPAddr)
+	// fmt.Printf("%d<--handshake(%v)\n", len(n), peer.TCPAddr)
 	return nil
 }
 

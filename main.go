@@ -28,16 +28,15 @@ func run(torrentPath string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	conn, trackAddr, err := connectToTracker(torrent)
-	if err != nil {
-		return 1, err
+	announceList := torrent.AnnounceList
+	if len(announceList) == 0 {
+		announceList = defaulAnnounceList
 	}
-	defer conn.Close()
-	client := newClient(torrent, conn, trackAddr)
+	client := newClient(torrent)
 	var clientErr error
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	go func() {
-		clientErr = client.Start()
+		clientErr = client.Start(announceList)
 	}()
 	<-ctx.Done()
 	client.File.Close()

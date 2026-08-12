@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -25,35 +24,62 @@ type AnnounceResp struct {
 	PeerAddresses []*net.TCPAddr
 }
 
-func (c *Client) GetPeerAddresses() ([]*net.TCPAddr, error) {
-	connResp, err := retry(10, c.TrackerConn, func() (ConnResp, error) {
-		connResp, err := c.RequestConn()
+func (c *Client) GetPeerAddresses(announceList [][]string) ([]*net.TCPAddr, error) {
+	for _, announce := range announceList {
+		fmt.Printf("Announcing to %s\n", announce[0])
+		parsedURL, err := url.Parse(announce[0])
 		if err != nil {
-			return ConnResp{}, err
+			continue
+		}
+		if parsedURL.Scheme != "udp" {
+			continue
+		}
+		addr, err := net.ResolveUDPAddr("udp", parsedURL.Host)
+		if err != nil {
+			continue
+		}
+		fmt.Println("resolved")
+		trackerConn, trackerAddr, err := connectToTracker(addr)
+		if err != nil {
+			continue
 		}
 		fmt.Println("connected to tracker")
-		return connResp, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return retry(10, c.TrackerConn, func() ([]*net.TCPAddr, error) {
-		peers, err := c.Announce(connResp)
+		c.TrackerAddr = trackerAddr
+		c.TrackerConn = trackerConn
+		connResp, err := retry(10, c.TrackerConn, func() (ConnResp, error) {
+			connResp, err := c.RequestConn()
+			if err != nil {
+				return ConnResp{}, err
+			}
+			return connResp, nil
+		})
 		if err != nil {
-			return []*net.TCPAddr{}, err
+			continue
 		}
-		fmt.Println("announced!")
+		peers, err := retry(10, c.TrackerConn, func() ([]*net.TCPAddr, error) {
+			peers, err := c.Announce(connResp)
+			if err != nil {
+				return []*net.TCPAddr{}, err
+			}
+			fmt.Println("announced!")
+			return peers, nil
+		})
+		if err != nil {
+			continue
+		}
 		return peers, nil
-	})
+	}
+	return []*net.TCPAddr{}, nil
 }
 
 func (c *Client) Announce(connResp ConnResp) ([]*net.TCPAddr, error) {
 	if _, err := c.TrackerConn.Write(c.BuildAnnounceReq(connResp.ConnectionID)); err != nil {
 		return []*net.TCPAddr{}, err
 	}
-	respBuffer := make([]byte, 1024)
+	respBuffer := make([]byte, 500)
 	n, err := io.ReadFull(c.TrackerConn, respBuffer)
 	if err != nil {
+		fmt.Println(err)
 		return []*net.TCPAddr{}, err
 	}
 	announcResp := parseAnnounceResp(respBuffer[:n])
@@ -90,7 +116,7 @@ func (c *Client) BuildAnnounceReq(connectID []byte) []byte {
 	// downloaded
 	b = binary.BigEndian.AppendUint64(b, 0)
 	// left
-	b = binary.BigEndian.AppendUint64(b, c.Torrent.Length)
+	b = binary.BigEndian.AppendUint64(b, c.Torrent.NumOfPieces)
 	// uploaded
 	b = binary.BigEndian.AppendUint64(b, 0)
 	// event 0 none
@@ -145,38 +171,10 @@ func parseConnResp(resp []byte) ConnResp {
 	}
 }
 
-func connectToTracker(torrent *Torrent) (*net.UDPConn, *net.UDPAddr, error) {
-	addr, err := findTracker(torrent)
-	if err != nil {
-		return nil, nil, err
-	}
-	conn, err := net.DialUDP("udp4", nil, addr)
+func connectToTracker(addr *net.UDPAddr) (*net.UDPConn, *net.UDPAddr, error) {
+	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
 		return nil, nil, err
 	}
 	return conn, addr, nil
-}
-
-func findTracker(torrent *Torrent) (*net.UDPAddr, error) {
-	var trackerAddr *net.UDPAddr
-	for _, announce := range torrent.AnnounceList {
-		parsedURL, err := url.Parse(announce[0])
-		if err != nil {
-			continue
-		}
-		if parsedURL.Scheme != "udp" {
-			continue
-		}
-		addr, err := net.ResolveUDPAddr("udp4", parsedURL.Host)
-		if err != nil {
-			continue
-		}
-		trackerAddr = addr
-		fmt.Printf("found tracker: %s\n", parsedURL.Host)
-		break
-	}
-	if trackerAddr == nil {
-		return nil, errors.New("couldn't find a reachable UDP tracker")
-	}
-	return trackerAddr, nil
 }
