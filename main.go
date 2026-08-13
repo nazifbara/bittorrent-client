@@ -34,9 +34,10 @@ func run(torrentPath string) (int, error) {
 	}
 	client := newClient(torrent)
 	var clientErr error
-	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	go func() {
 		clientErr = client.Start(announceList)
+		cancel()
 	}()
 	<-ctx.Done()
 	client.File.Close()

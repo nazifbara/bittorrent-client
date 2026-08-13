@@ -1,56 +1,57 @@
 package main
 
 import (
+	"crypto/sha1"
 	"encoding/binary"
 	"log"
 	"slices"
+	"sync"
 	"time"
 )
 
-func (c *Client) Download(peer *Peer) {
-	var buffer []byte
+func (c *Client) Download(peer *Peer, wg *sync.WaitGroup) {
+	defer wg.Done()
 	peer.Write(c.BuildInterested())
-	go func() {
-		for {
-			if peer == nil {
-				return
-			}
-			c.mu.Lock()
-			n := min(len(c.ActivePeers)*8, len(c.Queue))
-			queueSnapshot := append([]*Job(nil), c.Queue[:n]...)
-			c.mu.Unlock()
+	wg.Add(1)
+	go c.HandleJobs(peer, wg)
+	c.HandlePeerMessages(peer)
+}
 
-			for _, job := range queueSnapshot {
-				if job == nil {
-					continue
-				}
-				c.mu.Lock()
-				ready := !c.PiecesGrid[job.Index].Done &&
-					peer.Bitfield[job.Index] && !peer.IsChoke &&
-					time.Since(job.LastRequested) > 4*time.Second
-				if !ready {
-					c.mu.Unlock()
-					continue
-				}
-				job.LastRequested = time.Now()
-				begin := uint32(c.PiecesGrid[job.Index].Begin)
-				req := c.BuildRequest(uint32(job.Index), begin, c.BuildBlockSize(job.Index, begin))
-				c.mu.Unlock()
-
-				if _, err := peer.Write(req); err == nil {
-					// log.Printf("requested index=%d begin=%d from %v\n", job.Index, c.PiecesGrid[job.Index].Begin, peer.TCPAddr)
-					onJobRequested(job, peer)
-					break
-				}
-			}
-			time.Sleep(500 * time.Millisecond)
+func (c *Client) HandleJobs(peer *Peer, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for job := range c.JobsChannel {
+		if peer == nil {
+			return
 		}
-	}()
+		if job == nil {
+			continue
+		}
+
+		pieceState := c.PiecesGrid[job.Index]
+		pieceState.mu.Lock()
+		peer.mu.Lock()
+		ready := !pieceState.Done &&
+			peer.Bitfield[job.Index] &&
+			!peer.IsChoke
+		if !ready {
+			pieceState.mu.Unlock()
+			peer.mu.Unlock()
+			continue
+		}
+		pieceState.mu.Unlock()
+		peer.mu.Unlock()
+		req := c.BuildRequest(uint32(job.Index), job.Begin, c.BuildBlockSize(job.Index, job.Begin))
+		if _, err := peer.Write(req); err != nil {
+			// log.Printf("❌ %v", err)
+			continue
+			// log.Printf("requested index=%d begin=%d from %v\n", job.Index, c.PiecesGrid[job.Index].Begin, peer.TCPAddr)
+		}
+	}
+}
+
+func (c *Client) HandlePeerMessages(peer *Peer) {
+	var buffer []byte
 	for {
-		if c.Finished {
-			peer.Close()
-			break
-		}
 		chunk := make([]byte, 1024)
 		n, err := peer.Read(chunk)
 		if err != nil {
@@ -79,7 +80,7 @@ func (c *Client) Download(peer *Peer) {
 			buffer = buffer[total:]
 
 			c.HandleMessage(peer, msg)
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 		}
 	}
 }
@@ -104,53 +105,34 @@ func (c *Client) HandleMessage(peer *Peer, msg []byte) {
 }
 
 func (c *Client) HandleHave(peer *Peer, msg Message) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	payload, _ := parseHavePayload(msg.Payload)
-	// fmt.Printf("%v have %d\n", peer.TCPAddr, payload.Index)
-	peer.Bitfield[payload.Index] = true
-	c.AddToQueue(int(payload.Index), peer)
-}
-
-func (c *Client) AddToQueue(pieceIndex int, peer *Peer) {
-	if c.PiecesGrid[pieceIndex].Done {
-		return
-	}
-	if job := c.getJobByPieceIdx(uint32(pieceIndex)); job != nil {
-		return
-	}
-	c.Queue = append(c.Queue, &Job{Index: uint32(pieceIndex)})
-}
-
-func onJobRequested(job *Job, peer *Peer) {
-	now := time.Now()
-	job.LastRequested = now
-	peer.AliveAt = now
-}
-
-func (c *Client) IsHot(peer *Peer) bool {
-	return time.Since(peer.AliveAt) < 2*time.Minute
+	log.Printf("✉️ %v have %d\n", peer.TCPAddr, payload.Index)
+	c.addPieceJobs(payload.Index)
 }
 
 func (c *Client) HandleUnchok(peer *Peer) {
-	// fmt.Printf("unchoke by %v\n", peer.TCPAddr)
+	log.Printf("✉️ unchoke by %v\n", peer.TCPAddr)
+	peer.mu.Lock()
+	defer peer.mu.Unlock()
 	peer.IsChoke = false
 }
 
 func (c *Client) HandleChoke(peer *Peer) {
-	// fmt.Printf("choke by %v\n", peer.TCPAddr)
+	log.Printf("✉️ choke by %v\n", peer.TCPAddr)
+	go peer.mu.Unlock()
+	peer.mu.Lock()
 	peer.IsChoke = true
 }
 
 func (c *Client) HandleBitfield(peer *Peer, msg Message) {
-	// fmt.Printf("received %v bitfield\n", peer.TCPAddr)
+	log.Printf("✉️ received %v bitfield\n", peer.TCPAddr)
 	payload := parseBitfieldPayload(msg.Payload)
+	peer.mu.Lock()
 	peer.Bitfield = payload.Bitfield
+	peer.mu.Unlock()
 	for i, complete := range payload.Bitfield {
 		if complete {
-			c.mu.Lock()
-			c.AddToQueue(i, peer)
-			c.mu.Unlock()
+			c.addPieceJobs(uint32(i))
 		}
 	}
 }
@@ -160,60 +142,66 @@ func (c *Client) HandleBlock(peer *Peer, msg Message) {
 	if err != nil {
 		return
 	}
-	if len(c.Queue) == 0 {
-		return
-	}
+	// if payload.Index != 0 {
+	// 	return
+	// }
+	log.Printf("🎉 received block from %v: {begin=%d,index=%d,size=%d}\n", peer.TCPAddr, payload.Begin, payload.Index, len(payload.Block))
+
 	pieceState := c.PiecesGrid[payload.Index]
+	pieceState.mu.Lock()
+
 	if pieceState.Done {
+		pieceState.mu.Unlock()
 		return
 	}
 
-	if int(payload.Begin) != pieceState.Begin {
-		log.Printf("Bad offset for piece %d\n", payload.Index)
+	blockIdx := int(payload.Begin) / int(c.BlockSize)
+	if pieceState.Received[blockIdx] {
+		// duplicate delivery from a re-requested job — ignore, don't double-count
+		log.Printf("🛡️ Duplicated delivery")
+		pieceState.mu.Unlock()
 		return
 	}
-	expectedPieceSize := int(c.Torrent.PieceSize)
-	if payload.Index == uint32(c.Torrent.NumOfPieces-1) {
-		expectedPieceSize = int(c.Torrent.FinalPieceSize)
-	}
-	pieceState.Bytes = append(pieceState.Bytes, payload.Block...)
-	pieceState.Begin = len(pieceState.Bytes)
-	pieceState.Done = expectedPieceSize == int(pieceState.Begin)
+
+	copy(pieceState.Bytes[payload.Begin:int(payload.Begin)+len(payload.Block)], payload.Block)
+	pieceState.BlocksRead++
+	c.mu.Lock()
+	c.Queue = slices.DeleteFunc(c.Queue, func(j *Job) bool { return j.Index == payload.Index && j.Begin == payload.Begin })
+	c.mu.Unlock()
+	pieceState.Done = pieceState.BlocksRead == pieceState.TotalBlocks
 	c.mu.Lock()
 	c.Torrent.TotalDownloaded += uint64(len(payload.Block))
 	c.mu.Unlock()
-	log.Printf("Progress %d / %d\n", c.Torrent.TotalDownloaded, c.Torrent.ContentSize)
-	if pieceState.Done {
-		c.mu.Lock()
-		c.CompletedJobs++
-		c.Queue = slices.DeleteFunc(c.Queue, func(j *Job) bool { return j.Index == payload.Index })
-		c.mu.Unlock()
+	log.Printf("🍰 Progress %d / %d\n", c.Torrent.TotalDownloaded, c.Torrent.ContentSize)
 
+	if pieceState.Done {
+		pieceState.mu.Unlock()
 		offset := int64(payload.Index) * int64(c.Torrent.PieceSize)
-		go func() {
+		isValid := sha1.Sum(pieceState.Bytes) == c.Torrent.PieceHashes[payload.Index]
+		if isValid {
+			log.Printf("✅ Piece %d completed with valid hash\n", payload.Index)
+		} else {
+			log.Printf("❌ Piece %d completed with invalid hash\n", payload.Index)
+		}
+		log.Printf("🔧 Job left: %d", len(c.Queue))
+
+		go func(data []byte) {
 			n, err := c.File.WriteAt(pieceState.Bytes, offset)
 			if err != nil {
-				log.Printf("couldn't write piece to file: %v", err)
+				log.Printf("❌ couldn't write piece to file: %v", err)
 			} else {
-				log.Printf("%d written to file\n", n)
-				c.Finished = c.Torrent.TotalDownloaded == c.Torrent.ContentSize
-				if c.Finished {
-					log.Printf("✅ Download completed in %v/n", time.Since(c.startedAt).Minutes())
+				log.Printf("✍️ %d written to file\n", n)
+				pieceState.mu.Lock()
+				pieceState.Bytes = nil
+				pieceState.mu.Unlock()
+				if c.Torrent.TotalDownloaded == c.Torrent.ContentSize {
+					log.Printf("🔥 Download completed in %v/n", time.Since(c.startedAt).Minutes())
 				}
 			}
-		}()
-	} else {
-		_, err := peer.Write(c.BuildRequest(payload.Index, uint32(pieceState.Begin), c.BuildBlockSize(payload.Index, uint32(pieceState.Begin))))
-		if err != nil {
-			log.Println(err.Error())
-			return
-		}
-		job := c.getJobByPieceIdx(payload.Index)
-		if job == nil {
-			return
-		}
-		onJobRequested(job, peer)
+		}(payload.Block)
+		return
 	}
+	pieceState.mu.Unlock()
 }
 
 func (c *Client) BuildBlockSize(pieceIdx uint32, currentBegin uint32) uint32 {
@@ -228,8 +216,41 @@ func (c *Client) BuildBlockSize(pieceIdx uint32, currentBegin uint32) uint32 {
 	return c.BlockSize
 }
 
-func (c *Client) getJobByPieceIdx(pieceId uint32) *Job {
-	jobIdx := slices.IndexFunc(c.Queue, func(j *Job) bool { return j.Index == pieceId })
+func (c *Client) addPieceJobs(pieceIdx uint32) {
+	pieceState := c.PiecesGrid[pieceIdx]
+	pieceState.mu.Lock()
+	total := pieceState.TotalBlocks
+	pieceState.mu.Unlock()
+	for i := range total {
+		offset := i * int(c.BlockSize)
+		c.AddToQueue(pieceIdx, uint32(offset))
+	}
+}
+
+// AddToQueue takes pieceState.mu itself before checking pieceState.Done,
+// then c.mu for the queue check-and-append. Lock order is always
+// pieceState.mu -> c.mu, matching HandleBlock, to avoid deadlocks.
+func (c *Client) AddToQueue(pieceIndex uint32, offset uint32) {
+	pieceState := c.PiecesGrid[pieceIndex]
+	pieceState.mu.Lock()
+	if pieceState.Done {
+		pieceState.mu.Unlock()
+		return
+	}
+	pieceState.mu.Unlock()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if job := c.getJob(pieceIndex, offset); job != nil {
+		return
+	}
+	c.Queue = append(c.Queue, &Job{Index: pieceIndex, Begin: offset})
+	// log.Printf("👨‍🔧 new job {index=%d, begin:%d}", pieceIndex, offset)
+}
+
+// getJob must be called with c.mu already held.
+func (c *Client) getJob(pieceId, offset uint32) *Job {
+	jobIdx := slices.IndexFunc(c.Queue, func(j *Job) bool { return j.Index == pieceId && j.Begin == offset })
 	if jobIdx == -1 {
 		return nil
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"net"
 	"os"
@@ -11,23 +12,40 @@ import (
 )
 
 type PieceState struct {
-	Begin int
-	Bytes []byte
-	Done  bool
+	Bytes       []byte
+	BlocksRead  int
+	TotalBlocks int
+	PieceSize   uint64
+	Done        bool
+	Received    []bool
+	mu          sync.Mutex
 }
 
 type Peer struct {
 	*net.TCPConn
 	*net.TCPAddr
-	IsInactive bool
+	Active     bool
 	IsChoke    bool
-	AliveAt    time.Time
 	Bitfield   []bool
+	offsetSeed int
+	mu         sync.Mutex
 }
+
+func newPeerOffsetSeed(addr string) int {
+	h := fnv.New32a()
+	h.Write([]byte(addr))
+	return int(h.Sum32())
+}
+
 type Job struct {
-	Index         uint32
-	LastRequested time.Time
+	Index uint32
+	Begin uint32
 }
+
+func (j *Job) String() string {
+	return fmt.Sprintf("Job{Index:%d, Begin:%d}", j.Index, j.Begin)
+}
+
 type Client struct {
 	Torrent       *Torrent
 	TrackerConn   *net.UDPConn
@@ -35,10 +53,9 @@ type Client struct {
 	ActivePeers   []*Peer
 	PiecesGrid    []*PieceState
 	PeerAddresses []*net.TCPAddr
-	Finished      bool
 	Queue         []*Job
+	JobsChannel   chan *Job
 	File          *os.File
-	CompletedJobs uint32
 	BlockSize     uint32
 	mu            sync.Mutex
 	startedAt     time.Time
@@ -68,14 +85,31 @@ func (c *Client) Start(annnounceList [][]string) error {
 
 	c.PiecesGrid = make([]*PieceState, c.Torrent.NumOfPieces)
 	for i := range c.PiecesGrid {
-		c.PiecesGrid[i] = &PieceState{Begin: 0}
+		pieceSize := c.Torrent.PieceSize
+		if i == int(c.Torrent.NumOfPieces)-1 {
+			pieceSize = c.Torrent.FinalPieceSize
+		}
+		numOfBlock := pieceSize / uint64(c.BlockSize)
+		if pieceSize%uint64(c.BlockSize) != 0 {
+			numOfBlock++
+		}
+		bytes := make([]byte, pieceSize)
+		received := make([]bool, numOfBlock)
+		c.PiecesGrid[i] = &PieceState{Bytes: bytes, Received: received, PieceSize: pieceSize, TotalBlocks: int(numOfBlock)}
+		c.addPieceJobs(uint32(i))
 	}
+	c.JobsChannel = make(chan *Job, c.Torrent.NumOfBlocks)
+
 	addresses, err := c.GetPeerAddresses(annnounceList)
-	if err == nil {
-		c.PeerAddresses = addresses
+	if err != nil {
+		return err
 	}
+	if len(addresses) == 0 {
+		return errors.New("coudn't find peers")
+	}
+	c.PeerAddresses = addresses
 	c.startedAt = time.Now()
 	log.Println("⬇️ Downloading...")
-	go c.HealthcheckPeers()
+	c.HandlePeers()
 	return nil
 }

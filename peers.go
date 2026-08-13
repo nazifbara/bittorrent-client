@@ -28,11 +28,8 @@ func (c *Client) connectToPeer(address *net.TCPAddr) (*Peer, error) {
 		return nil, fmt.Errorf("connection is not *net.TCPConn: %T", conn)
 	}
 
-	peer := &Peer{TCPConn: tcpConn, TCPAddr: address}
-	if err := c.Handshake(peer); err != nil {
-		peer.Close()
-		return nil, fmt.Errorf("handshake failed with %v", peer.TCPAddr)
-	}
+	peer := &Peer{TCPConn: tcpConn, TCPAddr: address, Bitfield: make([]bool, c.Torrent.NumOfPieces), offsetSeed: newPeerOffsetSeed(address.String())}
+
 	return peer, nil
 }
 
@@ -48,38 +45,15 @@ func (c *Client) getPeerByAddr(address *net.TCPAddr) (int, *Peer) {
 	return index, c.ActivePeers[index]
 }
 
-func (c *Client) HandlePeerSuccess(p *Peer) {
-	_, existingPeer := c.getPeerByAddr(p.TCPAddr)
-	if existingPeer == nil {
-		p.Bitfield = make([]bool, c.Torrent.NumOfPieces)
-		p.AliveAt = time.Now()
-		c.ActivePeers = append(c.ActivePeers, p)
-		return
-	}
-	existingPeer.AliveAt = time.Now()
-	p.Close()
-}
-
-func (c *Client) HandlePeerFailure(address *net.TCPAddr) {
-	index, peer := c.getPeerByAddr(address)
-	if peer == nil {
-		return
-	}
-	if time.Since(peer.AliveAt) > time.Minute*2 {
-		peer.IsInactive = true
-		c.ActivePeers = slices.Delete(c.ActivePeers, index, index+1)
-	}
-}
-
-func (c *Client) HealthcheckPeers() {
+func (c *Client) HandlePeers() {
 	sem := make(chan struct{}, 10)
-	handlingDownloadMap := make(map[string]bool)
 	for {
-		if c.Finished {
-			break
+		if len(c.PeerAddresses) == 0 {
+			return
 		}
-		if len(c.PeerAddresses) == 0 || (len(c.Queue) > 0 && len(c.ActivePeers) > 0) {
-			continue
+
+		if len(c.ActivePeers) > 0 {
+			break
 		}
 		log.Println("searching active peers...")
 		var wg sync.WaitGroup
@@ -92,14 +66,7 @@ func (c *Client) HealthcheckPeers() {
 				defer func() { <-sem }()
 				peer, err := c.connectToPeer(&addr)
 				if err == nil {
-					if !handlingDownloadMap[peer.TCPAddr.String()] {
-						handlingDownloadMap[peer.TCPAddr.String()] = true
-						fmt.Printf("Downloading from %v\n", peer.TCPAddr)
-						go c.Download(peer)
-						c.HandlePeerSuccess(peer)
-					}
-				} else {
-					c.HandlePeerFailure(&addr)
+					c.Handshake(peer)
 				}
 			}()
 		}
@@ -108,4 +75,21 @@ func (c *Client) HealthcheckPeers() {
 			fmt.Printf("%d active peers out of %d\n", len(c.ActivePeers), len(c.PeerAddresses)-len(c.ActivePeers))
 		}
 	}
+	var peerGroup sync.WaitGroup
+	go func() {
+		for _, peer := range c.ActivePeers {
+			peerGroup.Add(1)
+			go c.Download(peer, &peerGroup)
+		}
+	}()
+	for {
+		for _, job := range c.Queue {
+			c.JobsChannel <- job
+			time.Sleep(100 * time.Millisecond)
+		}
+		if len(c.Queue) == 0 {
+			break
+		}
+	}
+	peerGroup.Wait()
 }
