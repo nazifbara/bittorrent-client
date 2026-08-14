@@ -28,7 +28,7 @@ func (c *Client) connectToPeer(address *net.TCPAddr) (*Peer, error) {
 		return nil, fmt.Errorf("connection is not *net.TCPConn: %T", conn)
 	}
 
-	peer := &Peer{TCPConn: tcpConn, TCPAddr: address, Bitfield: make([]bool, c.Torrent.NumOfPieces), offsetSeed: newPeerOffsetSeed(address.String())}
+	peer := &Peer{TCPConn: tcpConn, TCPAddr: address, Bitfield: make([]bool, c.Torrent.NumOfPieces)}
 
 	return peer, nil
 }
@@ -47,14 +47,26 @@ func (c *Client) getPeerByAddr(address *net.TCPAddr) (int, *Peer) {
 
 func (c *Client) HandlePeers() {
 	sem := make(chan struct{}, 10)
+
+	const maxSearchRounds = 5
+	rounds := 0
 	for {
 		if len(c.PeerAddresses) == 0 {
 			return
 		}
-
-		if len(c.ActivePeers) > 0 {
+		c.mu.Lock()
+		activeCount := len(c.ActivePeers)
+		c.mu.Unlock()
+		if activeCount > 0 {
 			break
 		}
+
+		rounds++
+		if rounds > maxSearchRounds {
+			log.Println("❌ no active peers found after max search rounds, giving up")
+			return
+		}
+
 		log.Println("searching active peers...")
 		var wg sync.WaitGroup
 		wg.Add(len(c.PeerAddresses))
@@ -71,25 +83,44 @@ func (c *Client) HandlePeers() {
 			}()
 		}
 		wg.Wait()
-		if len(c.ActivePeers) > 0 {
-			fmt.Printf("%d active peers out of %d\n", len(c.ActivePeers), len(c.PeerAddresses)-len(c.ActivePeers))
+
+		c.mu.Lock()
+		activeCount = len(c.ActivePeers)
+		totalCount := len(c.PeerAddresses)
+		c.mu.Unlock()
+		if activeCount > 0 {
+			fmt.Printf("%d active peers out of %d\n", activeCount, totalCount-activeCount)
+		} else {
+			time.Sleep(2 * time.Second) // back off before retrying the whole peer list
 		}
 	}
+
 	var peerGroup sync.WaitGroup
-	go func() {
-		for _, peer := range c.ActivePeers {
-			peerGroup.Add(1)
-			go c.Download(peer, &peerGroup)
-		}
-	}()
+	c.mu.Lock()
+	activePeersSnapshot := append([]*Peer(nil), c.ActivePeers...)
+	c.mu.Unlock()
+	for _, peer := range activePeersSnapshot {
+		peerGroup.Add(1)
+		go c.Download(peer, &peerGroup)
+	}
+	queueRound := 1
 	for {
-		for _, job := range c.Queue {
-			c.JobsChannel <- job
-			time.Sleep(100 * time.Millisecond)
-		}
-		if len(c.Queue) == 0 {
+		log.Printf("Queue round %d", queueRound)
+		c.mu.Lock()
+		queueSnapshot := append([]*Job(nil), c.Queue...)
+		c.mu.Unlock()
+		log.Printf("Queue size %d", len(queueSnapshot))
+		if len(queueSnapshot) == 0 {
 			break
 		}
+		roundJobsSent := 1
+		for _, job := range queueSnapshot {
+			c.JobsChannel <- job
+			roundJobsSent++
+		}
+		log.Printf("%d jobs sent for round %d", roundJobsSent, queueRound)
+		queueRound++
 	}
+
 	peerGroup.Wait()
 }

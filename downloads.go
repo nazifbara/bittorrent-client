@@ -19,20 +19,24 @@ func (c *Client) Download(peer *Peer, wg *sync.WaitGroup) {
 
 func (c *Client) HandleJobs(peer *Peer, wg *sync.WaitGroup) {
 	defer wg.Done()
-	for job := range c.JobsChannel {
+	for {
 		if peer == nil {
 			return
 		}
-		if job == nil {
+		peer.mu.Lock()
+		if peer.IsChoke {
+			peer.mu.Unlock()
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		job, ok := <-c.JobsChannel
+		if job == nil || !ok {
 			continue
 		}
 
 		pieceState := c.PiecesGrid[job.Index]
 		pieceState.mu.Lock()
-		peer.mu.Lock()
-		ready := !pieceState.Done &&
-			peer.Bitfield[job.Index] &&
-			!peer.IsChoke
+		ready := !pieceState.Done && peer.Bitfield[job.Index]
 		if !ready {
 			pieceState.mu.Unlock()
 			peer.mu.Unlock()
@@ -42,16 +46,29 @@ func (c *Client) HandleJobs(peer *Peer, wg *sync.WaitGroup) {
 		peer.mu.Unlock()
 		req := c.BuildRequest(uint32(job.Index), job.Begin, c.BuildBlockSize(job.Index, job.Begin))
 		if _, err := peer.Write(req); err != nil {
-			// log.Printf("❌ %v", err)
+			log.Printf("❌ %v", err)
+			job.DoneChan <- struct{}{}
+			peer.writeFailure.Store(peer.writeFailure.Load() + 1)
+			if peer.writeFailure.Load() > 3 {
+				c.mu.Lock()
+				c.ActivePeers = slices.DeleteFunc(c.ActivePeers, func(p *Peer) bool { return p.IP.Equal(peer.IP) && p.Port == peer.Port })
+				c.mu.Unlock()
+				return
+			}
 			continue
-			// log.Printf("requested index=%d begin=%d from %v\n", job.Index, c.PiecesGrid[job.Index].Begin, peer.TCPAddr)
 		}
+		log.Printf("👆 Waiting job index=%d begin=%d to be done\n", job.Index, job.Begin)
+		<-job.DoneChan
+		log.Printf("👆 Job done job index=%d begin=%d moving to the next\n", job.Index, job.Begin)
 	}
 }
 
 func (c *Client) HandlePeerMessages(peer *Peer) {
 	var buffer []byte
 	for {
+		if peer.writeFailure.Load() > 3 {
+			return
+		}
 		chunk := make([]byte, 1024)
 		n, err := peer.Read(chunk)
 		if err != nil {
@@ -119,8 +136,8 @@ func (c *Client) HandleUnchok(peer *Peer) {
 
 func (c *Client) HandleChoke(peer *Peer) {
 	log.Printf("✉️ choke by %v\n", peer.TCPAddr)
-	go peer.mu.Unlock()
 	peer.mu.Lock()
+	go peer.mu.Unlock()
 	peer.IsChoke = true
 }
 
@@ -162,11 +179,14 @@ func (c *Client) HandleBlock(peer *Peer, msg Message) {
 		pieceState.mu.Unlock()
 		return
 	}
+	pieceState.Received[blockIdx] = true
 
 	copy(pieceState.Bytes[payload.Begin:int(payload.Begin)+len(payload.Block)], payload.Block)
 	pieceState.BlocksRead++
 	c.mu.Lock()
-	c.Queue = slices.DeleteFunc(c.Queue, func(j *Job) bool { return j.Index == payload.Index && j.Begin == payload.Begin })
+	job := c.getJob(payload.Index, payload.Begin)
+	c.Queue = slices.DeleteFunc(c.Queue, func(j *Job) bool { return j.Index == job.Index && j.Begin == job.Begin })
+	job.DoneChan <- struct{}{}
 	c.mu.Unlock()
 	pieceState.Done = pieceState.BlocksRead == pieceState.TotalBlocks
 	c.mu.Lock()
@@ -244,7 +264,7 @@ func (c *Client) AddToQueue(pieceIndex uint32, offset uint32) {
 	if job := c.getJob(pieceIndex, offset); job != nil {
 		return
 	}
-	c.Queue = append(c.Queue, &Job{Index: pieceIndex, Begin: offset})
+	c.Queue = append(c.Queue, &Job{Index: pieceIndex, Begin: offset, DoneChan: make(chan struct{})})
 	// log.Printf("👨‍🔧 new job {index=%d, begin:%d}", pieceIndex, offset)
 }
 

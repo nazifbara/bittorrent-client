@@ -3,11 +3,11 @@ package main
 import (
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"log"
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,22 +24,17 @@ type PieceState struct {
 type Peer struct {
 	*net.TCPConn
 	*net.TCPAddr
-	Active     bool
-	IsChoke    bool
-	Bitfield   []bool
-	offsetSeed int
-	mu         sync.Mutex
-}
-
-func newPeerOffsetSeed(addr string) int {
-	h := fnv.New32a()
-	h.Write([]byte(addr))
-	return int(h.Sum32())
+	Active       bool
+	IsChoke      bool
+	Bitfield     []bool
+	writeFailure atomic.Int32
+	mu           sync.Mutex
 }
 
 type Job struct {
-	Index uint32
-	Begin uint32
+	Index    uint32
+	Begin    uint32
+	DoneChan chan struct{}
 }
 
 func (j *Job) String() string {
@@ -98,7 +93,7 @@ func (c *Client) Start(annnounceList [][]string) error {
 		c.PiecesGrid[i] = &PieceState{Bytes: bytes, Received: received, PieceSize: pieceSize, TotalBlocks: int(numOfBlock)}
 		c.addPieceJobs(uint32(i))
 	}
-	c.JobsChannel = make(chan *Job, c.Torrent.NumOfBlocks)
+	c.JobsChannel = make(chan *Job)
 
 	addresses, err := c.GetPeerAddresses(annnounceList)
 	if err != nil {
