@@ -19,7 +19,7 @@ func (c *Client) Download(peer *Peer, wg *sync.WaitGroup) {
 
 func (c *Client) HandleJobs(peer *Peer, wg *sync.WaitGroup) {
 	defer wg.Done()
-	for {
+	for job := range c.JobsChannel {
 		if peer == nil {
 			return
 		}
@@ -29,14 +29,12 @@ func (c *Client) HandleJobs(peer *Peer, wg *sync.WaitGroup) {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		job, ok := <-c.JobsChannel
-		if job == nil || !ok {
-			continue
-		}
+
+		// log.Printf("👨‍🔧 %v rabed job index=%d begin=%d \n", peer.TCPAddr, job.Index, job.Begin)
 
 		pieceState := c.PiecesGrid[job.Index]
 		pieceState.mu.Lock()
-		ready := !pieceState.Done && peer.Bitfield[job.Index]
+		ready := !pieceState.Done
 		if !ready {
 			pieceState.mu.Unlock()
 			peer.mu.Unlock()
@@ -47,7 +45,6 @@ func (c *Client) HandleJobs(peer *Peer, wg *sync.WaitGroup) {
 		req := c.BuildRequest(uint32(job.Index), job.Begin, c.BuildBlockSize(job.Index, job.Begin))
 		if _, err := peer.Write(req); err != nil {
 			log.Printf("❌ %v", err)
-			job.DoneChan <- struct{}{}
 			peer.writeFailure.Store(peer.writeFailure.Load() + 1)
 			if peer.writeFailure.Load() > 3 {
 				c.mu.Lock()
@@ -57,9 +54,7 @@ func (c *Client) HandleJobs(peer *Peer, wg *sync.WaitGroup) {
 			}
 			continue
 		}
-		log.Printf("👆 Waiting job index=%d begin=%d to be done\n", job.Index, job.Begin)
-		<-job.DoneChan
-		log.Printf("👆 Job done job index=%d begin=%d moving to the next\n", job.Index, job.Begin)
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
@@ -186,7 +181,6 @@ func (c *Client) HandleBlock(peer *Peer, msg Message) {
 	c.mu.Lock()
 	job := c.getJob(payload.Index, payload.Begin)
 	c.Queue = slices.DeleteFunc(c.Queue, func(j *Job) bool { return j.Index == job.Index && j.Begin == job.Begin })
-	job.DoneChan <- struct{}{}
 	c.mu.Unlock()
 	pieceState.Done = pieceState.BlocksRead == pieceState.TotalBlocks
 	c.mu.Lock()
@@ -264,7 +258,7 @@ func (c *Client) AddToQueue(pieceIndex uint32, offset uint32) {
 	if job := c.getJob(pieceIndex, offset); job != nil {
 		return
 	}
-	c.Queue = append(c.Queue, &Job{Index: pieceIndex, Begin: offset, DoneChan: make(chan struct{})})
+	c.Queue = append(c.Queue, &Job{Index: pieceIndex, Begin: offset})
 	// log.Printf("👨‍🔧 new job {index=%d, begin:%d}", pieceIndex, offset)
 }
 

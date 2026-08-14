@@ -32,9 +32,8 @@ type Peer struct {
 }
 
 type Job struct {
-	Index    uint32
-	Begin    uint32
-	DoneChan chan struct{}
+	Index uint32
+	Begin uint32
 }
 
 func (j *Job) String() string {
@@ -93,7 +92,6 @@ func (c *Client) Start(annnounceList [][]string) error {
 		c.PiecesGrid[i] = &PieceState{Bytes: bytes, Received: received, PieceSize: pieceSize, TotalBlocks: int(numOfBlock)}
 		c.addPieceJobs(uint32(i))
 	}
-	c.JobsChannel = make(chan *Job)
 
 	addresses, err := c.GetPeerAddresses(annnounceList)
 	if err != nil {

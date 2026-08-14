@@ -98,6 +98,7 @@ func (c *Client) HandlePeers() {
 	var peerGroup sync.WaitGroup
 	c.mu.Lock()
 	activePeersSnapshot := append([]*Peer(nil), c.ActivePeers...)
+	c.JobsChannel = make(chan *Job, len(activePeersSnapshot))
 	c.mu.Unlock()
 	for _, peer := range activePeersSnapshot {
 		peerGroup.Add(1)
