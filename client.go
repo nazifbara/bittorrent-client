@@ -24,7 +24,6 @@ type PieceState struct {
 type Peer struct {
 	*net.TCPConn
 	*net.TCPAddr
-	Active       bool
 	IsChoke      bool
 	Bitfield     []bool
 	writeFailure atomic.Int32
@@ -32,13 +31,16 @@ type Peer struct {
 }
 
 type Job struct {
-	Index uint32
-	Begin uint32
+	Index         uint32
+	Begin         uint32
+	LastRequested time.Time
 }
 
 func (j *Job) String() string {
 	return fmt.Sprintf("Job{Index:%d, Begin:%d}", j.Index, j.Begin)
 }
+
+const blockSize uint32 = 16384
 
 type Client struct {
 	Torrent       *Torrent
@@ -49,19 +51,43 @@ type Client struct {
 	PeerAddresses []*net.TCPAddr
 	Queue         []*Job
 	JobsChannel   chan *Job
+	ReadyChannel  chan struct{}
+	LastBlockAt   time.Time
+	AvgRTT        time.Duration
 	File          *os.File
 	BlockSize     uint32
 	mu            sync.Mutex
 	startedAt     time.Time
 }
 
-const blockSize uint32 = 16384
-
 func newClient(torrent *Torrent) Client {
 	return Client{
 		Torrent:   torrent,
 		BlockSize: blockSize,
 	}
+}
+
+func (c *Client) RecordRTT(sample time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.AvgRTT == 0 {
+		c.AvgRTT = sample
+		return
+	}
+	const alpha = 0.125
+	c.AvgRTT = time.Duration(float64(c.AvgRTT)*(1-alpha) + float64(sample)*alpha)
+}
+
+func (c *Client) RoundtripTimeout() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.AvgRTT == 0 {
+		return 8 * time.Second
+	}
+	timeout := c.AvgRTT * 4
+	timeout = max(timeout, 2*time.Second)
+	timeout = min(timeout, 20*time.Second)
+	return timeout
 }
 
 func (c *Client) Start(annnounceList [][]string) error {

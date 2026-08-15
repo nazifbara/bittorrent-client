@@ -21,7 +21,6 @@ func (c *Client) Handshake(peer *Peer) {
 	// fmt.Printf("%d<--handshake(%v)\n", len(n), peer.TCPAddr)
 	c.mu.Lock()
 	c.ActivePeers = append(c.ActivePeers, peer)
-	peer.Active = true
 	c.mu.Unlock()
 }
 

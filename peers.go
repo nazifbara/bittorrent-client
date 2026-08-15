@@ -95,33 +95,38 @@ func (c *Client) HandlePeers() {
 		}
 	}
 
-	var peerGroup sync.WaitGroup
 	c.mu.Lock()
 	activePeersSnapshot := append([]*Peer(nil), c.ActivePeers...)
 	c.JobsChannel = make(chan *Job, len(activePeersSnapshot))
 	c.mu.Unlock()
-	for _, peer := range activePeersSnapshot {
-		peerGroup.Add(1)
-		go c.Download(peer, &peerGroup)
-	}
+	c.ReadyChannel = make(chan struct{}, len(activePeersSnapshot))
 	queueRound := 1
+	initialized := false
 	for {
-		log.Printf("Queue round %d", queueRound)
 		c.mu.Lock()
 		queueSnapshot := append([]*Job(nil), c.Queue...)
 		c.mu.Unlock()
-		log.Printf("Queue size %d", len(queueSnapshot))
 		if len(queueSnapshot) == 0 {
 			break
 		}
-		roundJobsSent := 1
+		if !initialized {
+			go func() {
+				initialized = true
+				for _, peer := range activePeersSnapshot {
+					go c.Download(peer)
+				}
+			}()
+		}
+		<-c.ReadyChannel
 		for _, job := range queueSnapshot {
 			c.JobsChannel <- job
-			roundJobsSent++
+			c.mu.Lock()
+			time.Sleep(time.Duration(500/len(c.ActivePeers)) * time.Millisecond)
+			c.mu.Unlock()
 		}
-		log.Printf("%d jobs sent for round %d", roundJobsSent, queueRound)
+		for len(c.Queue) > 0 && time.Since(c.LastBlockAt) < c.RoundtripTimeout() {
+			time.Sleep(100 * time.Millisecond)
+		}
 		queueRound++
 	}
-
-	peerGroup.Wait()
 }
