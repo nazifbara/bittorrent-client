@@ -39,15 +39,13 @@ func (c *Client) GetPeerAddresses(announceList [][]string) ([]*net.TCPAddr, erro
 			continue
 		}
 		fmt.Println("resolved")
-		trackerConn, trackerAddr, err := connectToTracker(addr)
+		trackerConn, err := connectToTracker(addr)
 		if err != nil {
 			continue
 		}
 		fmt.Println("connected to tracker")
-		c.TrackerAddr = trackerAddr
-		c.TrackerConn = trackerConn
-		connResp, err := retry(10, c.TrackerConn, func() (ConnResp, error) {
-			connResp, err := c.RequestConn()
+		connResp, err := retry(10, trackerConn, func() (ConnResp, error) {
+			connResp, err := c.RequestConn(trackerConn)
 			if err != nil {
 				return ConnResp{}, err
 			}
@@ -56,8 +54,8 @@ func (c *Client) GetPeerAddresses(announceList [][]string) ([]*net.TCPAddr, erro
 		if err != nil {
 			continue
 		}
-		peers, err := retry(10, c.TrackerConn, func() ([]*net.TCPAddr, error) {
-			peers, err := c.Announce(connResp)
+		peers, err := retry(10, trackerConn, func() ([]*net.TCPAddr, error) {
+			peers, err := c.announce(connResp, trackerConn)
 			if err != nil {
 				return []*net.TCPAddr{}, err
 			}
@@ -72,12 +70,12 @@ func (c *Client) GetPeerAddresses(announceList [][]string) ([]*net.TCPAddr, erro
 	return []*net.TCPAddr{}, nil
 }
 
-func (c *Client) Announce(connResp ConnResp) ([]*net.TCPAddr, error) {
-	if _, err := c.TrackerConn.Write(c.BuildAnnounceReq(connResp.ConnectionID)); err != nil {
+func (c *Client) announce(connResp ConnResp, trackerConn *net.UDPConn) ([]*net.TCPAddr, error) {
+	if _, err := trackerConn.Write(c.BuildAnnounceReq(connResp.ConnectionID, trackerConn)); err != nil {
 		return []*net.TCPAddr{}, err
 	}
 	respBuffer := make([]byte, 500)
-	n, err := io.ReadFull(c.TrackerConn, respBuffer)
+	n, err := io.ReadFull(trackerConn, respBuffer)
 	if err != nil {
 		fmt.Println(err)
 		return []*net.TCPAddr{}, err
@@ -86,12 +84,12 @@ func (c *Client) Announce(connResp ConnResp) ([]*net.TCPAddr, error) {
 	return announcResp.PeerAddresses, nil
 }
 
-func (c *Client) RequestConn() (ConnResp, error) {
+func (c *Client) RequestConn(trackerConn *net.UDPConn) (ConnResp, error) {
 	respBuffer := make([]byte, 16)
-	if _, err := c.TrackerConn.Write(buildConnReq()); err != nil {
+	if _, err := trackerConn.Write(buildConnReq()); err != nil {
 		return ConnResp{}, err
 	}
-	n, err := io.ReadFull(c.TrackerConn, respBuffer)
+	n, err := io.ReadFull(trackerConn, respBuffer)
 	if err != nil {
 		return ConnResp{}, err
 	}
@@ -101,7 +99,7 @@ func (c *Client) RequestConn() (ConnResp, error) {
 	return parseConnResp(respBuffer[:n]), nil
 }
 
-func (c *Client) BuildAnnounceReq(connectID []byte) []byte {
+func (c *Client) BuildAnnounceReq(connectID []byte, trackerConn *net.UDPConn) []byte {
 	b := make([]byte, 0, 98)
 	// connection id
 	b = append(b, connectID...)
@@ -110,13 +108,13 @@ func (c *Client) BuildAnnounceReq(connectID []byte) []byte {
 	// transaction id
 	b = binary.BigEndian.AppendUint32(b, rand.Uint32())
 	// infohash
-	b = append(b, c.Torrent.InfoHash[:]...)
+	b = append(b, c.torrent.InfoHash[:]...)
 	// peer id
 	b = append(b, randomPeerID()...)
 	// downloaded
 	b = binary.BigEndian.AppendUint64(b, 0)
 	// left
-	b = binary.BigEndian.AppendUint64(b, c.Torrent.NumOfPieces)
+	b = binary.BigEndian.AppendUint64(b, c.torrent.NumOfPieces)
 	// uploaded
 	b = binary.BigEndian.AppendUint64(b, 0)
 	// event 0 none
@@ -128,7 +126,7 @@ func (c *Client) BuildAnnounceReq(connectID []byte) []byte {
 	// num want
 	b = binary.BigEndian.AppendUint32(b, uint32(0xFFFFFFFF))
 	// port
-	b = binary.BigEndian.AppendUint16(b, uint16(c.TrackerConn.LocalAddr().(*net.UDPAddr).Port))
+	b = binary.BigEndian.AppendUint16(b, uint16(trackerConn.LocalAddr().(*net.UDPAddr).Port))
 	return b
 }
 
@@ -171,10 +169,10 @@ func parseConnResp(resp []byte) ConnResp {
 	}
 }
 
-func connectToTracker(addr *net.UDPAddr) (*net.UDPConn, *net.UDPAddr, error) {
+func connectToTracker(addr *net.UDPAddr) (*net.UDPConn, error) {
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return conn, addr, nil
+	return conn, nil
 }

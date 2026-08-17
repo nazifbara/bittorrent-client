@@ -6,9 +6,9 @@ import (
 )
 
 type Message struct {
-	Size    uint32
-	ID      uint8
-	Payload []byte
+	size    uint32
+	id      uint8
+	payload []byte
 }
 
 type HavePayload struct {
@@ -42,19 +42,19 @@ func parseMessage(b []byte) (Message, error) {
 		return Message{}, errors.New("message unexpectedly short")
 	}
 
-	message := Message{Size: binary.BigEndian.Uint32(b[:4])}
-	if message.Size == 0 {
+	message := Message{size: binary.BigEndian.Uint32(b[:4])}
+	if message.size == 0 {
 		return message, nil
 	}
 
-	payloadLength := int(message.Size) - 1
+	payloadLength := int(message.size) - 1
 	minSize := 4 + 1 + payloadLength
 	if len(b) < minSize {
-		return Message{Size: message.Size}, errors.New("message unexpectedly short")
+		return Message{size: message.size}, errors.New("message unexpectedly short")
 	}
 
-	message.ID = uint8(b[4])
-	message.Payload = b[5 : 5+payloadLength]
+	message.id = uint8(b[4])
+	message.payload = b[5 : 5+payloadLength]
 	return message, nil
 }
 
@@ -98,7 +98,19 @@ func parseHavePayload(b []byte) (HavePayload, error) {
 	return HavePayload{Index: binary.BigEndian.Uint32(b)}, nil
 }
 
-func (c *Client) BuildHandShake() []byte {
+func (c *Client) buildBlockSize(pieceIdx uint32, currentBegin uint32) uint32 {
+	totalPieceSize := uint32(c.torrent.PieceSize)
+	if pieceIdx == uint32(c.torrent.NumOfPieces-1) {
+		totalPieceSize = uint32(c.torrent.FinalPieceSize)
+	}
+	rem := totalPieceSize - currentBegin
+	if rem < blockSize {
+		return rem
+	}
+	return blockSize
+}
+
+func buildHandShake(infohash []byte) []byte {
 	b := make([]byte, 0, 68)
 	// pstrlen
 	b = append(b, byte(19))
@@ -107,17 +119,17 @@ func (c *Client) BuildHandShake() []byte {
 	// reserved
 	b = binary.BigEndian.AppendUint64(b, 0)
 	// info hash
-	b = append(b, c.Torrent.InfoHash[:]...)
+	b = append(b, infohash...)
 	// peer id
 	b = append(b, randomPeerID()...)
 	return b
 }
 
-func (c *Client) BuildKeepAlive() []byte {
+func buildKeepAlive() []byte {
 	return make([]byte, 4)
 }
 
-func (c *Client) BuildChoke() []byte {
+func buildChoke() []byte {
 	b := make([]byte, 0, 5)
 	// length
 	b = binary.BigEndian.AppendUint32(b, 1)
@@ -126,7 +138,7 @@ func (c *Client) BuildChoke() []byte {
 	return b
 }
 
-func (c *Client) BuildUnchoke() []byte {
+func buildUnchoke() []byte {
 	b := make([]byte, 0, 5)
 	// length
 	b = binary.BigEndian.AppendUint32(b, 1)
@@ -135,7 +147,7 @@ func (c *Client) BuildUnchoke() []byte {
 	return b
 }
 
-func (c *Client) BuildInterested() []byte {
+func buildInterested() []byte {
 	b := make([]byte, 0, 5)
 	// length
 	b = binary.BigEndian.AppendUint32(b, 1)
@@ -144,7 +156,7 @@ func (c *Client) BuildInterested() []byte {
 	return b
 }
 
-func (c *Client) BuildUninterested() []byte {
+func buildUninterested() []byte {
 	b := make([]byte, 0, 5)
 	// length
 	b = binary.BigEndian.AppendUint32(b, 1)
@@ -153,7 +165,7 @@ func (c *Client) BuildUninterested() []byte {
 	return b
 }
 
-func (c *Client) BuildHave(pieceIdx uint32) []byte {
+func buildHave(pieceIdx uint32) []byte {
 	b := make([]byte, 0, 9)
 	// length
 	b = binary.BigEndian.AppendUint32(b, 5)
@@ -164,7 +176,7 @@ func (c *Client) BuildHave(pieceIdx uint32) []byte {
 	return b
 }
 
-func (c *Client) BuildBitfield(payload []bool) ([]byte, error) {
+func buildBitfield(payload []bool) ([]byte, error) {
 	bitBytes, err := bitsToBytes(payload)
 	if err != nil {
 		return nil, err
@@ -177,7 +189,7 @@ func (c *Client) BuildBitfield(payload []bool) ([]byte, error) {
 	return b, nil
 }
 
-func (c *Client) BuildRequest(pieceIdx, begin, pieceLength uint32) []byte {
+func buildRequest(pieceIdx, begin, pieceLength uint32) []byte {
 	b := make([]byte, 0, 17)
 	// length
 	b = binary.BigEndian.AppendUint32(b, 13)
@@ -192,7 +204,7 @@ func (c *Client) BuildRequest(pieceIdx, begin, pieceLength uint32) []byte {
 	return b
 }
 
-func (c *Client) BuildPiece(pieceIdx, begin uint32, block []byte) []byte {
+func buildPiece(pieceIdx, begin uint32, block []byte) []byte {
 	blockSize := len(block)
 	b := make([]byte, 0, 13+blockSize)
 	// length
@@ -208,7 +220,7 @@ func (c *Client) BuildPiece(pieceIdx, begin uint32, block []byte) []byte {
 	return b
 }
 
-func (c *Client) BuildCancel(pieceIdx, begin, pieceLength uint32) []byte {
+func buildCancel(pieceIdx, begin, pieceLength uint32) []byte {
 	b := make([]byte, 0, 17)
 	// length
 	b = binary.BigEndian.AppendUint32(b, 13)
@@ -223,7 +235,7 @@ func (c *Client) BuildCancel(pieceIdx, begin, pieceLength uint32) []byte {
 	return b
 }
 
-func (c *Client) BuildPort(port uint16) []byte {
+func buildPort(port uint16) []byte {
 	b := make([]byte, 0, 7)
 	// length
 	b = binary.BigEndian.AppendUint32(b, 3)

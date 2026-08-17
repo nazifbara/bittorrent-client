@@ -9,7 +9,7 @@ func (c *Client) Handshake(peer *Peer) {
 	if peer == nil {
 		return
 	}
-	if _, err := peer.Write(c.BuildHandShake()); err != nil {
+	if _, err := peer.Write(buildHandShake(c.torrent.InfoHash[:])); err != nil {
 		return
 	}
 	// fmt.Printf("handshake-->%v\n", peer.TCPAddr)
@@ -20,7 +20,7 @@ func (c *Client) Handshake(peer *Peer) {
 	}
 	// fmt.Printf("%d<--handshake(%v)\n", len(n), peer.TCPAddr)
 	c.mu.Lock()
-	c.ActivePeers = append(c.ActivePeers, peer)
+	c.activePeers = append(c.activePeers, peer)
 	c.mu.Unlock()
 }
 

@@ -28,7 +28,7 @@ func (c *Client) connectToPeer(address *net.TCPAddr) (*Peer, error) {
 		return nil, fmt.Errorf("connection is not *net.TCPConn: %T", conn)
 	}
 
-	peer := &Peer{TCPConn: tcpConn, TCPAddr: address, Bitfield: make([]bool, c.Torrent.NumOfPieces)}
+	peer := &Peer{TCPConn: tcpConn, TCPAddr: address, Bitfield: make([]bool, c.torrent.NumOfPieces), rtt: *newRTTTracker(100)}
 
 	return peer, nil
 }
@@ -36,26 +36,26 @@ func (c *Client) connectToPeer(address *net.TCPAddr) (*Peer, error) {
 func (c *Client) getPeerByAddr(address *net.TCPAddr) (int, *Peer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	index := slices.IndexFunc(c.ActivePeers, func(ap *Peer) bool {
+	index := slices.IndexFunc(c.activePeers, func(ap *Peer) bool {
 		return address.IP.Equal(ap.IP) && address.Port == ap.Port
 	})
 	if index == -1 {
 		return index, nil
 	}
-	return index, c.ActivePeers[index]
+	return index, c.activePeers[index]
 }
 
-func (c *Client) HandlePeers() {
+func (c *Client) download() error {
 	sem := make(chan struct{}, 10)
 
 	const maxSearchRounds = 5
 	rounds := 0
 	for {
-		if len(c.PeerAddresses) == 0 {
-			return
+		if len(c.peerAddresses) == 0 {
+			return errors.New("no peer addressed")
 		}
 		c.mu.Lock()
-		activeCount := len(c.ActivePeers)
+		activeCount := len(c.activePeers)
 		c.mu.Unlock()
 		if activeCount > 0 {
 			break
@@ -63,14 +63,13 @@ func (c *Client) HandlePeers() {
 
 		rounds++
 		if rounds > maxSearchRounds {
-			log.Println("❌ no active peers found after max search rounds, giving up")
-			return
+			return fmt.Errorf("❌ no active peers found after max search rounds, giving up")
 		}
 
 		log.Println("searching active peers...")
 		var wg sync.WaitGroup
-		wg.Add(len(c.PeerAddresses))
-		for _, addr := range c.PeerAddresses {
+		wg.Add(len(c.peerAddresses))
+		for _, addr := range c.peerAddresses {
 			addr := *addr
 			sem <- struct{}{}
 			go func() {
@@ -85,48 +84,34 @@ func (c *Client) HandlePeers() {
 		wg.Wait()
 
 		c.mu.Lock()
-		activeCount = len(c.ActivePeers)
-		totalCount := len(c.PeerAddresses)
+		activeCount = len(c.activePeers)
+		totalCount := len(c.peerAddresses)
 		c.mu.Unlock()
 		if activeCount > 0 {
 			fmt.Printf("%d active peers out of %d\n", activeCount, totalCount-activeCount)
 		} else {
-			time.Sleep(2 * time.Second) // back off before retrying the whole peer list
+			time.Sleep(2 * time.Second)
 		}
 	}
 
-	c.mu.Lock()
-	activePeersSnapshot := append([]*Peer(nil), c.ActivePeers...)
-	c.JobsChannel = make(chan *Job, len(activePeersSnapshot))
-	c.mu.Unlock()
-	c.ReadyChannel = make(chan struct{}, len(activePeersSnapshot))
-	queueRound := 1
-	initialized := false
-	for {
-		c.mu.Lock()
-		queueSnapshot := append([]*Job(nil), c.Queue...)
-		c.mu.Unlock()
-		if len(queueSnapshot) == 0 {
-			break
-		}
-		if !initialized {
-			go func() {
-				initialized = true
-				for _, peer := range activePeersSnapshot {
-					go c.Download(peer)
-				}
-			}()
-		}
-		<-c.ReadyChannel
-		for _, job := range queueSnapshot {
-			c.JobsChannel <- job
-			c.mu.Lock()
-			time.Sleep(time.Duration(500/len(c.ActivePeers)) * time.Millisecond)
-			c.mu.Unlock()
-		}
-		for len(c.Queue) > 0 && time.Since(c.LastBlockAt) < c.RoundtripTimeout() {
-			time.Sleep(100 * time.Millisecond)
-		}
-		queueRound++
+	for i := range c.piecesGrid {
+		c.addPieceJobs(uint32(i))
 	}
+
+	for _, peer := range c.activePeers {
+		peer.done = make(chan struct{})
+		if _, err := peer.Write(buildInterested()); err != nil {
+			continue
+		}
+		go c.readPeerMessages(peer)
+	}
+
+	<-c.done
+	c.shutdown()
+	c.mu.Lock()
+	for _, peer := range c.activePeers {
+		peer.Close()
+	}
+	c.mu.Unlock()
+	return nil
 }

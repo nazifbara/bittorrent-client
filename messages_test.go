@@ -9,9 +9,8 @@ import (
 
 func TestBuildHandShake(t *testing.T) {
 	infoHash := [20]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}
-	client := Client{Torrent: &Torrent{InfoHash: infoHash}}
 
-	handshake := client.BuildHandShake()
+	handshake := buildHandShake(infoHash[:])
 	if len(handshake) != 68 {
 		t.Fatalf("expected handshake length 68, got %d", len(handshake))
 	}
@@ -42,8 +41,7 @@ func TestBuildHandShake(t *testing.T) {
 }
 
 func TestBuildKeepAlive(t *testing.T) {
-	client := Client{}
-	ka := client.BuildKeepAlive()
+	ka := buildKeepAlive()
 	if len(ka) != 4 {
 		t.Fatalf("expected keep-alive length 4, got %d", len(ka))
 	}
@@ -53,8 +51,6 @@ func TestBuildKeepAlive(t *testing.T) {
 }
 
 func TestBuildChoke(t *testing.T) {
-	client := Client{}
-
 	tests := []struct {
 		name string
 		want []byte
@@ -64,7 +60,7 @@ func TestBuildChoke(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := client.BuildChoke()
+			got := buildChoke()
 			if !bytes.Equal(got, tc.want) {
 				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
 			}
@@ -73,8 +69,6 @@ func TestBuildChoke(t *testing.T) {
 }
 
 func TestBuildUnchoke(t *testing.T) {
-	client := Client{}
-
 	tests := []struct {
 		name string
 		want []byte
@@ -84,7 +78,7 @@ func TestBuildUnchoke(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := client.BuildUnchoke()
+			got := buildUnchoke()
 			if !bytes.Equal(got, tc.want) {
 				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
 			}
@@ -93,8 +87,6 @@ func TestBuildUnchoke(t *testing.T) {
 }
 
 func TestBuildInterested(t *testing.T) {
-	client := Client{}
-
 	tests := []struct {
 		name string
 		want []byte
@@ -104,7 +96,7 @@ func TestBuildInterested(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := client.BuildInterested()
+			got := buildInterested()
 			if !bytes.Equal(got, tc.want) {
 				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
 			}
@@ -113,8 +105,6 @@ func TestBuildInterested(t *testing.T) {
 }
 
 func TestBuildUninterested(t *testing.T) {
-	client := Client{}
-
 	tests := []struct {
 		name string
 		want []byte
@@ -124,7 +114,7 @@ func TestBuildUninterested(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := client.BuildUninterested()
+			got := buildUninterested()
 			if !bytes.Equal(got, tc.want) {
 				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
 			}
@@ -133,8 +123,6 @@ func TestBuildUninterested(t *testing.T) {
 }
 
 func TestBuildBitfield(t *testing.T) {
-	client := Client{}
-
 	tests := []struct {
 		name    string
 		payload []bool
@@ -147,7 +135,7 @@ func TestBuildBitfield(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := client.BuildBitfield(tc.payload)
+			got, err := buildBitfield(tc.payload)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -159,8 +147,6 @@ func TestBuildBitfield(t *testing.T) {
 }
 
 func TestBuildHave(t *testing.T) {
-	client := Client{}
-
 	tests := []struct {
 		name     string
 		pieceIdx uint32
@@ -173,7 +159,7 @@ func TestBuildHave(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := client.BuildHave(tc.pieceIdx)
+			got := buildHave(tc.pieceIdx)
 			if !bytes.Equal(got, tc.want) {
 				t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
 			}
@@ -182,8 +168,6 @@ func TestBuildHave(t *testing.T) {
 }
 
 func TestBuildRequest(t *testing.T) {
-	client := Client{}
-
 	tests := []struct {
 		name        string
 		pieceIdx    uint32
@@ -196,7 +180,7 @@ func TestBuildRequest(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := client.BuildRequest(tc.pieceIdx, tc.begin, tc.pieceLength)
+			got := buildRequest(tc.pieceIdx, tc.begin, tc.pieceLength)
 			if len(got) != 17 {
 				t.Fatalf("%s: expected length 17, got %d", tc.name, len(got))
 			}
@@ -217,8 +201,6 @@ func TestBuildRequest(t *testing.T) {
 }
 
 func TestBuildCancel(t *testing.T) {
-	client := Client{}
-
 	tests := []struct {
 		name        string
 		pieceIdx    uint32
@@ -231,7 +213,7 @@ func TestBuildCancel(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := client.BuildCancel(tc.pieceIdx, tc.begin, tc.pieceLength)
+			got := buildCancel(tc.pieceIdx, tc.begin, tc.pieceLength)
 			if len(got) != 17 {
 				t.Fatalf("%s: expected length 17, got %d", tc.name, len(got))
 			}
@@ -252,8 +234,6 @@ func TestBuildCancel(t *testing.T) {
 }
 
 func TestBuildPort(t *testing.T) {
-	client := Client{}
-
 	tests := []struct {
 		name string
 		port uint16
@@ -264,7 +244,7 @@ func TestBuildPort(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := client.BuildPort(tc.port)
+			got := buildPort(tc.port)
 			if len(got) != 7 {
 				t.Fatalf("%s: expected length 7, got %d", tc.name, len(got))
 			}
@@ -279,8 +259,6 @@ func TestBuildPort(t *testing.T) {
 }
 
 func TestBuildPiece(t *testing.T) {
-	client := Client{}
-
 	tests := []struct {
 		name     string
 		pieceIdx uint32
@@ -293,7 +271,7 @@ func TestBuildPiece(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := client.BuildPiece(tc.pieceIdx, tc.begin, tc.block)
+			got := buildPiece(tc.pieceIdx, tc.begin, tc.block)
 			if len(got) != 13+len(tc.block) {
 				t.Fatalf("%s: expected length %d, got %d", tc.name, 13+len(tc.block), len(got))
 			}
@@ -320,9 +298,9 @@ func TestParseMessage(t *testing.T) {
 		want    Message
 		wantErr string
 	}{
-		{name: "keep alive", input: []byte{0, 0, 0, 0}, want: Message{Size: 0}},
-		{name: "choke", input: []byte{0, 0, 0, 1, 0}, want: Message{Size: 1, ID: 0}},
-		{name: "have", input: []byte{0, 0, 0, 5, 4, 0, 0, 0, 42}, want: Message{Size: 5, ID: 4, Payload: []byte{0, 0, 0, 42}}},
+		{name: "keep alive", input: []byte{0, 0, 0, 0}, want: Message{size: 0}},
+		{name: "choke", input: []byte{0, 0, 0, 1, 0}, want: Message{size: 1, id: 0}},
+		{name: "have", input: []byte{0, 0, 0, 5, 4, 0, 0, 0, 42}, want: Message{size: 5, id: 4, payload: []byte{0, 0, 0, 42}}},
 		{name: "truncated payload", input: []byte{0, 0, 0, 2, 0}, wantErr: "message unexpectedly short"},
 		{name: "too short", input: []byte{0, 0, 0}, wantErr: "message unexpectedly short"},
 	}
@@ -339,7 +317,7 @@ func TestParseMessage(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got.Size != tc.want.Size || got.ID != tc.want.ID || !bytes.Equal(got.Payload, tc.want.Payload) {
+			if got.size != tc.want.size || got.id != tc.want.id || !bytes.Equal(got.payload, tc.want.payload) {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
 			}
 		})

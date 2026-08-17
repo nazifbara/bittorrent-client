@@ -32,7 +32,7 @@ func run(torrentPath string) (int, error) {
 	if len(announceList) == 0 {
 		announceList = defaulAnnounceList
 	}
-	client := newClient(torrent)
+	client := NewClient(torrent)
 	var clientErr error
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -40,7 +40,8 @@ func run(torrentPath string) (int, error) {
 		cancel()
 	}()
 	<-ctx.Done()
-	client.File.Close()
+	client.shutdown()
+	client.file.Close()
 	if clientErr != nil {
 		return 1, err
 	}

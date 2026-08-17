@@ -20,6 +20,7 @@ type Torrent struct {
 	NumOfBlocks     uint64
 	ContentSize     uint64
 	TotalDownloaded uint64
+	Files           []FileDict
 	Name            string
 	AnnounceList    [][]string
 }
@@ -80,6 +81,7 @@ func (bt BencodeTorrent) ToTorrent() (Torrent, error) {
 		AnnounceList:   bt.AnnounceList,
 		PieceHashes:    pieceHashes,
 		PieceSize:      bt.Info.PieceLength,
+		Files:          bt.Info.Files,
 		NumOfBlocks:    uint64(numOfBlocks),
 		FinalPieceSize: uint64(finalPieceSize),
 	}, nil
