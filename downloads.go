@@ -3,7 +3,9 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/binary"
+	"fmt"
 	"log"
+	"slices"
 	"time"
 )
 
@@ -193,33 +195,60 @@ func (c *Client) onBlockReceived(peer *Peer, msg Message) {
 	pieceState.Done = pieceState.BlocksRead == pieceState.TotalBlocks
 	pieceState.mu.Unlock()
 	c.totalDownloaded.Add(uint64(len(payload.Block)))
-
 	log.Printf("🍰 Progress %d / %d\n", c.totalDownloaded.Load(), c.torrent.ContentSize)
 	if pieceState.Done {
-		// offset := int64(payload.Index) * int64(c.torrent.PieceSize)
 		isValid := sha1.Sum(pieceState.Bytes) == c.torrent.PieceHashes[payload.Index]
-		if isValid {
-			log.Printf("✅ Piece %d completed with valid hash\n", payload.Index)
-		} else {
+		if !isValid {
 			log.Printf("❌ Piece %d completed with invalid hash\n", payload.Index)
 		}
-		// go func(data []byte) {
-		// 	// n, err := c.file.WriteAt(pieceState.Bytes, offset)
-		// 	if err != nil {
-		// 		log.Printf("❌ couldn't write piece to file: %v", err)
-		// 	} else {
-		// 		// log.Printf("✍️ %d bytes written to file\n", n)
-		// 		pieceState.mu.Lock()
-		// 		pieceState.Bytes = nil
-		// 		pieceState.mu.Unlock()
-		// 		if c.totalDownloaded.Load() == c.torrent.ContentSize {
-		// 			log.Printf("🔥 Download completed in %.00f\n", time.Since(c.startedAt).Minutes())
-		// 			c.doneOnce.Do(func() {
-		// 				close(c.done)
-		// 			})
-		// 		}
-		// 	}
-		// }(payload.Block)
-		return
+		pieceState.Bytes = nil
 	}
+	go func(data []byte) {
+		err := c.writeToFile(payload.Index, payload.Begin, data)
+		if err != nil {
+			log.Println("❌ Couldn't write to file")
+			c.shutdown()
+		}
+	}(payload.Block)
+}
+
+func (c *Client) writeToFile(pieceIndex, pieceBegin uint32, block []byte) error {
+	globalBegin := int64(pieceIndex)*int64(c.torrent.PieceSize) + int64(pieceBegin)
+	return c.writeAtGlobal(globalBegin, block)
+}
+
+func (c *Client) writeAtGlobal(globalBegin int64, data []byte) error {
+	for len(data) > 0 {
+		index := slices.IndexFunc(c.filesGrid, func(f *FileState) bool {
+			return f.begin <= globalBegin && globalBegin < f.begin+f.size
+		})
+		if index == -1 {
+			return fmt.Errorf("no file found for global offset %d", globalBegin)
+		}
+		fs := c.filesGrid[index]
+
+		fs.mu.Lock()
+		offset := globalBegin - fs.begin
+		spaceInFile := fs.size - offset
+		n := min(int64(len(data)), spaceInFile)
+
+		if _, err := fs.file.WriteAt(data[:n], offset); err != nil {
+			fs.mu.Unlock()
+			return err
+		}
+		fs.blocksWrote++
+		if fs.blocksWrote == fs.numOfBlocks {
+			log.Printf("✅ %s completed", fs.name)
+		}
+		fs.mu.Unlock()
+		if c.totalDownloaded.Load() == c.torrent.ContentSize {
+			log.Printf("🔥 Download completed in %.00f\n", time.Since(c.startedAt).Minutes())
+			c.doneOnce.Do(func() {
+				close(c.done)
+			})
+		}
+		data = data[n:]
+		globalBegin += n
+	}
+	return nil
 }

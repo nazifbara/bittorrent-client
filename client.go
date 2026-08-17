@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -16,8 +17,9 @@ type FileState struct {
 	begin       int64
 	size        int64
 	file        *os.File
-	blocksRead  int
+	blocksWrote int
 	numOfBlocks int
+	name        string
 	mu          sync.Mutex
 }
 
@@ -147,30 +149,39 @@ func (c *Client) Start(annnounceList [][]string) error {
 		return err
 	}
 
+	fileBegin := int64(0)
 	for i, f := range c.torrent.Files {
-		fmt.Printf("file: %s / numOfFullBlocks: %d, lastBlockSize %d\n", f.Path[len(f.Path)-1], f.Length/int64(blockSize), f.Length%int64(blockSize))
 		file, err := createFileFromPath(c.torrent.Name, f.Path)
 		if err != nil {
 			return err
 		}
-		begin := i * int(f.Length)
+		if i != 0 {
+			fileBegin += c.torrent.Files[i-1].Length
+		}
 		numOfBlocks := f.Length / int64(blockSize)
+
 		if f.Length%int64(blockSize) != 0 {
 			numOfBlocks++
 		}
-		c.filesGrid[i] = &FileState{begin: int64(begin), size: f.Length, file: file, numOfBlocks: int(numOfBlocks)}
+		name := f.Path[len(f.Path)-1]
+		c.filesGrid[i] = &FileState{
+			begin:       fileBegin,
+			size:        f.Length,
+			file:        file,
+			numOfBlocks: int(numOfBlocks),
+			name:        name,
+		}
 	}
 
-	// addresses, err := c.GetPeerAddresses(annnounceList)
-	// if err != nil {
-	// 	return err
-	// }
-	// if len(addresses) == 0 {
-	// 	return errors.New("coudn't find peers")
-	// }
-	// c.peerAddresses = addresses
-	// c.startedAt = time.Now()
-	// log.Println("⬇️ Downloading...")
-	// return c.download()
-	return nil
+	addresses, err := c.GetPeerAddresses(annnounceList)
+	if err != nil {
+		return err
+	}
+	if len(addresses) == 0 {
+		return errors.New("coudn't find peers")
+	}
+	c.peerAddresses = addresses
+	c.startedAt = time.Now()
+	log.Println("⬇️ Downloading...")
+	return c.download()
 }
