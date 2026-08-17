@@ -201,6 +201,9 @@ func (c *Client) onBlockReceived(peer *Peer, msg Message) {
 		isValid := sha1.Sum(pieceState.Bytes) == c.torrent.PieceHashes[payload.Index]
 		if !isValid {
 			log.Printf("❌ Piece %d completed with invalid hash\n", payload.Index)
+			c.doneOnce.Do(func() {
+				close(c.done)
+			})
 		}
 		pieceState.Bytes = nil
 	}
@@ -208,7 +211,9 @@ func (c *Client) onBlockReceived(peer *Peer, msg Message) {
 		err := c.writeToFile(payload.Index, payload.Begin, data)
 		if err != nil {
 			log.Println("❌ Couldn't write to file")
-			c.shutdown()
+			c.doneOnce.Do(func() {
+				close(c.done)
+			})
 		}
 	}(payload.Block)
 }
