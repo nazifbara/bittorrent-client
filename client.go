@@ -130,7 +130,7 @@ func createFileFromPath(root string, path []string) (*os.File, error) {
 	for i, p := range path {
 		fmt.Fprintf(&builder, "/%s", p)
 		if i != len(path)-1 {
-			if err := os.Mkdir(builder.String(), 0755); !errors.Is(err, os.ErrExist) {
+			if err := os.Mkdir(builder.String(), 0755); err != nil && !errors.Is(err, os.ErrExist) {
 				return &os.File{}, err
 			}
 			continue
@@ -165,6 +165,7 @@ func (c *Client) Start(annnounceList [][]string) error {
 			numOfBlocks++
 		}
 		name := f.Path[len(f.Path)-1]
+		fmt.Println(file.Name())
 		c.filesGrid[i] = &FileState{
 			begin:       fileBegin,
 			size:        f.Length,
