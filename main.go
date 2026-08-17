@@ -12,15 +12,16 @@ import (
 
 func main() {
 	torrentPath := flag.String("f", "", "path to the torrent file")
+	trackerUrl := flag.String("t", "", "tracker url")
 	flag.Parse()
-	code, err := run(*torrentPath)
+	code, err := run(*torrentPath, *trackerUrl)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
 	os.Exit(code)
 }
 
-func run(torrentPath string) (int, error) {
+func run(torrentPath, trackerUrl string) (int, error) {
 	if torrentPath == "" {
 		return 1, errors.New("path to torrent file not provided")
 	}
@@ -29,8 +30,8 @@ func run(torrentPath string) (int, error) {
 		return 1, err
 	}
 	announceList := torrent.AnnounceList
-	if len(announceList) == 0 {
-		announceList = defaulAnnounceList
+	if trackerUrl != "" {
+		announceList = [][]string{{trackerUrl}}
 	}
 	client := NewClient(torrent)
 	var clientErr error
