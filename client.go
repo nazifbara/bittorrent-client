@@ -4,13 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+type FileState struct {
+	begin       int64
+	size        int64
+	file        *os.File
+	blocksRead  int
+	numOfBlocks int
+	mu          sync.Mutex
+}
 
 type Job struct {
 	index uint32
@@ -78,7 +87,7 @@ type Client struct {
 	totalDownloaded atomic.Uint64
 	done            chan struct{}
 	doneOnce        sync.Once
-	file            *os.File
+	filesGrid       []*FileState
 	ctx             context.Context
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
@@ -107,32 +116,61 @@ func NewClient(torrent *Torrent) *Client {
 		pending:    make(map[string]*pendingRequest),
 		ctx:        ctx,
 		cancel:     cancel,
+		filesGrid:  make([]*FileState, len(torrent.Files)),
 		done:       make(chan struct{}),
 	}
 }
 
+func createFileFromPath(root string, path []string) (*os.File, error) {
+	builder := strings.Builder{}
+	builder.WriteString(root)
+	for i, p := range path {
+		fmt.Fprintf(&builder, "/%s", p)
+		if i != len(path)-1 {
+			if err := os.Mkdir(builder.String(), 0755); !errors.Is(err, os.ErrExist) {
+				return &os.File{}, err
+			}
+			continue
+		}
+		file, err := os.OpenFile(builder.String(), os.O_WRONLY|os.O_CREATE, 0666)
+		if err != nil {
+			return &os.File{}, nil
+		}
+		return file, nil
+	}
+	return &os.File{}, nil
+}
+
 func (c *Client) Start(annnounceList [][]string) error {
 	err := os.Mkdir(c.torrent.Name, 0755)
-	if err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return err
-		}
-	}
-	file, err := os.OpenFile(fmt.Sprintf("%s/%s.download", c.torrent.Name, c.torrent.Name), os.O_WRONLY|os.O_CREATE, 0666)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	c.file = file
-
-	addresses, err := c.GetPeerAddresses(annnounceList)
-	if err != nil {
+	if !errors.Is(err, os.ErrExist) {
 		return err
 	}
-	if len(addresses) == 0 {
-		return errors.New("coudn't find peers")
+
+	for i, f := range c.torrent.Files {
+		fmt.Printf("file: %s / numOfFullBlocks: %d, lastBlockSize %d\n", f.Path[len(f.Path)-1], f.Length/int64(blockSize), f.Length%int64(blockSize))
+		file, err := createFileFromPath(c.torrent.Name, f.Path)
+		if err != nil {
+			return err
+		}
+		begin := i * int(f.Length)
+		numOfBlocks := f.Length / int64(blockSize)
+		if f.Length%int64(blockSize) != 0 {
+			numOfBlocks++
+		}
+		c.filesGrid[i] = &FileState{begin: int64(begin), size: f.Length, file: file, numOfBlocks: int(numOfBlocks)}
 	}
-	c.peerAddresses = addresses
-	c.startedAt = time.Now()
-	log.Println("⬇️ Downloading...")
-	return c.download()
+
+	// addresses, err := c.GetPeerAddresses(annnounceList)
+	// if err != nil {
+	// 	return err
+	// }
+	// if len(addresses) == 0 {
+	// 	return errors.New("coudn't find peers")
+	// }
+	// c.peerAddresses = addresses
+	// c.startedAt = time.Now()
+	// log.Println("⬇️ Downloading...")
+	// return c.download()
+	return nil
 }

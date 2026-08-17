@@ -196,30 +196,30 @@ func (c *Client) onBlockReceived(peer *Peer, msg Message) {
 
 	log.Printf("🍰 Progress %d / %d\n", c.totalDownloaded.Load(), c.torrent.ContentSize)
 	if pieceState.Done {
-		offset := int64(payload.Index) * int64(c.torrent.PieceSize)
+		// offset := int64(payload.Index) * int64(c.torrent.PieceSize)
 		isValid := sha1.Sum(pieceState.Bytes) == c.torrent.PieceHashes[payload.Index]
 		if isValid {
 			log.Printf("✅ Piece %d completed with valid hash\n", payload.Index)
 		} else {
 			log.Printf("❌ Piece %d completed with invalid hash\n", payload.Index)
 		}
-		go func(data []byte) {
-			n, err := c.file.WriteAt(pieceState.Bytes, offset)
-			if err != nil {
-				log.Printf("❌ couldn't write piece to file: %v", err)
-			} else {
-				log.Printf("✍️ %d bytes written to file\n", n)
-				pieceState.mu.Lock()
-				pieceState.Bytes = nil
-				pieceState.mu.Unlock()
-				if c.totalDownloaded.Load() == c.torrent.ContentSize {
-					log.Printf("🔥 Download completed in %.00f\n", time.Since(c.startedAt).Minutes())
-					c.doneOnce.Do(func() {
-						close(c.done)
-					})
-				}
-			}
-		}(payload.Block)
+		// go func(data []byte) {
+		// 	// n, err := c.file.WriteAt(pieceState.Bytes, offset)
+		// 	if err != nil {
+		// 		log.Printf("❌ couldn't write piece to file: %v", err)
+		// 	} else {
+		// 		// log.Printf("✍️ %d bytes written to file\n", n)
+		// 		pieceState.mu.Lock()
+		// 		pieceState.Bytes = nil
+		// 		pieceState.mu.Unlock()
+		// 		if c.totalDownloaded.Load() == c.torrent.ContentSize {
+		// 			log.Printf("🔥 Download completed in %.00f\n", time.Since(c.startedAt).Minutes())
+		// 			c.doneOnce.Do(func() {
+		// 				close(c.done)
+		// 			})
+		// 		}
+		// 	}
+		// }(payload.Block)
 		return
 	}
 }
