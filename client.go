@@ -165,7 +165,6 @@ func (c *Client) Start(annnounceList [][]string) error {
 			numOfBlocks++
 		}
 		name := f.Path[len(f.Path)-1]
-		fmt.Println(file.Name())
 		c.filesGrid[i] = &FileState{
 			begin:       fileBegin,
 			size:        f.Length,
