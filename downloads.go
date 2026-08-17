@@ -50,6 +50,7 @@ func (c *Client) runPeerWorker(peer *Peer) {
 		case <-c.ctx.Done():
 			return
 		case <-peer.done:
+			c.addrQeue <- peer.TCPAddr
 			return
 		case job, ok := <-c.queue:
 			if !ok {

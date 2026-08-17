@@ -3,10 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"slices"
-	"sync"
 	"time"
 )
 
@@ -46,65 +44,49 @@ func (c *Client) getPeerByAddr(address *net.TCPAddr) (int, *Peer) {
 }
 
 func (c *Client) download() error {
-	sem := make(chan struct{}, 10)
-
-	const maxSearchRounds = 5
-	rounds := 0
-	for {
-		if len(c.peerAddresses) == 0 {
-			return errors.New("no peer addressed")
-		}
-		c.mu.Lock()
-		activeCount := len(c.activePeers)
-		c.mu.Unlock()
-		if activeCount > 0 {
-			break
-		}
-
-		rounds++
-		if rounds > maxSearchRounds {
-			return fmt.Errorf("❌ no active peers found after max search rounds, giving up")
-		}
-
-		log.Println("searching active peers...")
-		var wg sync.WaitGroup
-		wg.Add(len(c.peerAddresses))
-		for _, addr := range c.peerAddresses {
-			addr := *addr
-			sem <- struct{}{}
-			go func() {
-				defer wg.Done()
-				defer func() { <-sem }()
-				peer, err := c.connectToPeer(&addr)
-				if err == nil {
-					c.Handshake(peer)
-				}
-			}()
-		}
-		wg.Wait()
-
-		c.mu.Lock()
-		activeCount = len(c.activePeers)
-		totalCount := len(c.peerAddresses)
-		c.mu.Unlock()
-		if activeCount > 0 {
-			fmt.Printf("%d active peers out of %d\n", activeCount, totalCount-activeCount)
-		} else {
-			time.Sleep(2 * time.Second)
-		}
+	c.addrQeue = make(chan *net.TCPAddr, len(c.peerAddresses))
+	for _, addr := range c.peerAddresses {
+		c.addrQeue <- addr
 	}
 
 	for i := range c.piecesGrid {
 		c.addPieceJobs(uint32(i))
 	}
 
-	for _, peer := range c.activePeers {
-		peer.done = make(chan struct{})
-		if _, err := peer.Write(buildInterested()); err != nil {
-			continue
+	go func() {
+		initialized := false
+		time.AfterFunc(30*time.Second, func() {
+			initialized = true
+		})
+		for {
+			select {
+			case <-c.done:
+				return
+			case addr, ok := <-c.addrQeue:
+				if ok {
+					peer, err := c.connectToPeer(addr)
+					if err != nil {
+						c.addrQeue <- addr
+						continue
+					}
+					peer = c.Handshake(peer)
+					if peer == nil {
+						c.addrQeue <- addr
+						continue
+					}
+					peer.done = make(chan struct{})
+					if _, err := peer.Write(buildInterested()); err != nil {
+						c.addrQeue <- addr
+						continue
+					}
+					go c.readPeerMessages(peer)
+				}
+			}
+			if initialized {
+				time.Sleep(2 * time.Minute)
+			}
 		}
-		go c.readPeerMessages(peer)
-	}
+	}()
 
 	<-c.done
 	c.shutdown()

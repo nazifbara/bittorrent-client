@@ -5,23 +5,18 @@ import (
 	"net"
 )
 
-func (c *Client) Handshake(peer *Peer) {
+func (c *Client) Handshake(peer *Peer) *Peer {
 	if peer == nil {
-		return
+		return nil
 	}
 	if _, err := peer.Write(buildHandShake(c.torrent.InfoHash[:])); err != nil {
-		return
+		return nil
 	}
-	// fmt.Printf("handshake-->%v\n", peer.TCPAddr)
 	_, err := readHandshake(peer.TCPConn)
 	if err != nil {
-		// fmt.Printf("handshake xxx %v\n", peer.TCPAddr)
-		return
+		return nil
 	}
-	// fmt.Printf("%d<--handshake(%v)\n", len(n), peer.TCPAddr)
-	c.mu.Lock()
-	c.activePeers = append(c.activePeers, peer)
-	c.mu.Unlock()
+	return peer
 }
 
 func readHandshake(conn *net.TCPConn) ([]byte, error) {

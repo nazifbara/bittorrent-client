@@ -81,6 +81,7 @@ type Client struct {
 	mu              sync.Mutex
 	torrent         *Torrent
 	queue           chan *Job
+	addrQeue        chan *net.TCPAddr
 	pending         map[string]*pendingRequest
 	activePeers     []*Peer
 	piecesGrid      []*PieceState
