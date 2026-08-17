@@ -146,7 +146,7 @@ func createFileFromPath(root string, path []string) (*os.File, error) {
 
 func (c *Client) Start(annnounceList [][]string) error {
 	err := os.Mkdir(c.torrent.Name, 0755)
-	if !errors.Is(err, os.ErrExist) {
+	if err != nil && !errors.Is(err, os.ErrExist) {
 		return err
 	}
 

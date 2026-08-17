@@ -42,7 +42,9 @@ func run(torrentPath string) (int, error) {
 	<-ctx.Done()
 	client.shutdown()
 	for _, f := range client.filesGrid {
-		f.file.Close()
+		if f != nil {
+			f.file.Close()
+		}
 	}
 	if clientErr != nil {
 		return 1, err
