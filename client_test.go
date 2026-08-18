@@ -37,8 +37,8 @@ func TestNewClientBuildsPiecesGrid(t *testing.T) {
 		if wantSize%uint64(blockSize) != 0 {
 			wantBlocks++
 		}
-		if ps.TotalBlocks != wantBlocks {
-			t.Fatalf("piece %d: expected %d total blocks, got %d", i, wantBlocks, ps.TotalBlocks)
+		if ps.NumOfBlocks != wantBlocks {
+			t.Fatalf("piece %d: expected %d total blocks, got %d", i, wantBlocks, ps.NumOfBlocks)
 		}
 		if ps.Done {
 			t.Fatalf("piece %d: expected new piece to not be marked done", i)

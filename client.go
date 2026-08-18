@@ -38,11 +38,19 @@ type pendingRequest struct {
 type PieceState struct {
 	Bytes       []byte
 	BlocksRead  int
-	TotalBlocks int
+	NumOfBlocks int
 	PieceSize   uint64
 	Done        bool
 	Received    []bool
 	mu          sync.Mutex
+}
+
+func (p *PieceState) reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.BlocksRead = 0
+	p.Bytes = make([]byte, p.NumOfBlocks)
+	p.Done = false
 }
 
 type Peer struct {
@@ -110,7 +118,7 @@ func NewClient(torrent *Torrent) *Client {
 			numOfBlock++
 		}
 		bytes := make([]byte, pieceSize)
-		piecesGrid[i] = &PieceState{Bytes: bytes, PieceSize: pieceSize, TotalBlocks: int(numOfBlock)}
+		piecesGrid[i] = &PieceState{Bytes: bytes, PieceSize: pieceSize, NumOfBlocks: int(numOfBlock)}
 	}
 	return &Client{
 		torrent:    torrent,

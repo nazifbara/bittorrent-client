@@ -193,14 +193,17 @@ func (c *Client) onBlockReceived(peer *Peer, msg Message) {
 	pieceState.mu.Lock()
 	copy(pieceState.Bytes[payload.Begin:int(payload.Begin)+len(payload.Block)], payload.Block)
 	pieceState.BlocksRead++
-	pieceState.Done = pieceState.BlocksRead == pieceState.TotalBlocks
+	pieceState.Done = pieceState.BlocksRead == pieceState.NumOfBlocks
 	pieceState.mu.Unlock()
 	c.totalDownloaded.Add(uint64(len(payload.Block)))
 	log.Printf("🍰 Progress %d / %d\n", c.totalDownloaded.Load(), c.torrent.ContentSize)
 	if pieceState.Done {
 		isValid := sha1.Sum(pieceState.Bytes) == c.torrent.PieceHashes[payload.Index]
 		if !isValid {
-			log.Printf("❌ Piece %d completed with invalid hash\n", payload.Index)
+			log.Printf("⚠️ Re-downloading piece %d due to invalid\n", payload.Index)
+			pieceState.reset()
+			c.totalDownloaded.Store(c.totalDownloaded.Load() - pieceState.PieceSize)
+			c.addPieceJobs(pr.job.index)
 			c.doneOnce.Do(func() {
 				close(c.done)
 			})
