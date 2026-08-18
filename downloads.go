@@ -251,7 +251,7 @@ func (c *Client) writeAtGlobal(globalBegin int64, data []byte) error {
 		}
 		fs.mu.Unlock()
 		if c.totalDownloaded.Load() == int64(c.torrent.contentSize) {
-			log.Printf("🔥 Download completed in %.00f\n", time.Since(c.startedAt).Minutes())
+			log.Printf("🔥 Download completed in %v\n", time.Since(c.startedAt))
 			c.doneOnce.Do(func() {
 				close(c.done)
 			})

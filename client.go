@@ -7,7 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
-	"strings"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -133,29 +133,33 @@ func newClient(torrent *Torrent) *Client {
 }
 
 func createFileFromPath(root string, path []string) (*os.File, error) {
-	builder := strings.Builder{}
-	builder.WriteString(root)
-	for i, p := range path {
-		if len(path) > 1 {
-			fmt.Fprintf(&builder, "/%s", p)
-		}
-		fmt.Fprintf(&builder, "%s", p)
+	if len(path) == 0 {
+		return nil, fmt.Errorf("path must not be empty")
+	}
 
-		if i != len(path)-1 && len(path) > 1 {
-			if err := os.Mkdir(builder.String(), 0755); err != nil && !errors.Is(err, os.ErrExist) {
-				return &os.File{}, err
+	current := root
+	for i, p := range path {
+		if current == "" {
+			current = p
+		} else {
+			current = filepath.Join(current, p)
+		}
+
+		if i != len(path)-1 {
+			if err := os.Mkdir(current, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+				return nil, err
 			}
 			continue
 		}
 
-		file, err := os.OpenFile(builder.String(), os.O_WRONLY|os.O_CREATE, 0666)
+		file, err := os.OpenFile(current, os.O_WRONLY|os.O_CREATE, 0666)
 		if err != nil {
-			log.Fatal(err)
-			return &os.File{}, nil
+			return nil, err
 		}
 		return file, nil
 	}
-	return &os.File{}, nil
+
+	return nil, fmt.Errorf("unreachable")
 }
 
 func (c *Client) Start(annnounceList [][]string) error {
