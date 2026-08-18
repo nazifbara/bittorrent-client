@@ -1,4 +1,4 @@
-module github.com/nazifbara/bittorent-client
+module github.com/nazifbara/zifbittorent
 
 go 1.26.5
 
