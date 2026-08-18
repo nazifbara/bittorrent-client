@@ -95,7 +95,7 @@ type Client struct {
 	piecesGrid      []*PieceState
 	peerAddresses   []*net.TCPAddr
 	startedAt       time.Time
-	totalDownloaded atomic.Uint64
+	totalDownloaded atomic.Int64
 	done            chan struct{}
 	doneOnce        sync.Once
 	filesGrid       []*FileState

@@ -105,7 +105,7 @@ func TestWriteAtGlobalClosesDoneChannelWhenComplete(t *testing.T) {
 	data := []byte{1, 2, 3, 4, 5}
 	// Simulate the totalDownloaded accounting that onBlockReceived does before
 	// calling writeToFile/writeAtGlobal.
-	c.totalDownloaded.Store(uint64(len(data)))
+	c.totalDownloaded.Store(int64(len(data)))
 	if err := c.writeAtGlobal(0, data); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
