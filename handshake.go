@@ -9,7 +9,7 @@ func (c *Client) Handshake(peer *Peer) *Peer {
 	if peer == nil {
 		return nil
 	}
-	if _, err := peer.Write(buildHandShake(c.torrent.InfoHash[:])); err != nil {
+	if _, err := peer.Write(buildHandShake(c.torrent.infoHash[:])); err != nil {
 		return nil
 	}
 	_, err := readHandshake(peer.TCPConn)

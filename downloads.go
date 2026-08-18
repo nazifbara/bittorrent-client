@@ -191,24 +191,24 @@ func (c *Client) onBlockReceived(peer *Peer, msg Message) {
 
 	pieceState := c.piecesGrid[payload.Index]
 	pieceState.mu.Lock()
-	copy(pieceState.Bytes[payload.Begin:int(payload.Begin)+len(payload.Block)], payload.Block)
-	pieceState.BlocksRead++
-	pieceState.Done = pieceState.BlocksRead == pieceState.NumOfBlocks
+	copy(pieceState.bytes[payload.Begin:int(payload.Begin)+len(payload.Block)], payload.Block)
+	pieceState.blocksRead++
+	pieceState.done = pieceState.blocksRead == pieceState.numOfBlocks
 	pieceState.mu.Unlock()
 	c.totalDownloaded.Add(uint64(len(payload.Block)))
-	log.Printf("🍰 Progress %d / %d\n", c.totalDownloaded.Load(), c.torrent.ContentSize)
-	if pieceState.Done {
-		isValid := sha1.Sum(pieceState.Bytes) == c.torrent.PieceHashes[payload.Index]
+	log.Printf("🍰 Progress %d / %d\n", c.totalDownloaded.Load(), c.torrent.contentSize)
+	if pieceState.done {
+		isValid := sha1.Sum(pieceState.bytes) == c.torrent.pieceHashes[payload.Index]
 		if !isValid {
 			log.Printf("⚠️ Re-downloading piece %d due to invalid\n", payload.Index)
 			pieceState.reset()
-			c.totalDownloaded.Store(c.totalDownloaded.Load() - pieceState.PieceSize)
+			c.totalDownloaded.Store(c.totalDownloaded.Load() - pieceState.pieceSize)
 			c.addPieceJobs(pr.job.index)
 			c.doneOnce.Do(func() {
 				close(c.done)
 			})
 		}
-		pieceState.Bytes = nil
+		pieceState.bytes = nil
 	}
 	go func(data []byte) {
 		err := c.writeToFile(payload.Index, payload.Begin, data)
@@ -222,7 +222,7 @@ func (c *Client) onBlockReceived(peer *Peer, msg Message) {
 }
 
 func (c *Client) writeToFile(pieceIndex, pieceBegin uint32, block []byte) error {
-	globalBegin := int64(pieceIndex)*int64(c.torrent.PieceSize) + int64(pieceBegin)
+	globalBegin := int64(pieceIndex)*int64(c.torrent.pieceSize) + int64(pieceBegin)
 	return c.writeAtGlobal(globalBegin, block)
 }
 
@@ -250,7 +250,7 @@ func (c *Client) writeAtGlobal(globalBegin int64, data []byte) error {
 			log.Printf("✅ %s completed", fs.name)
 		}
 		fs.mu.Unlock()
-		if c.totalDownloaded.Load() == c.torrent.ContentSize {
+		if c.totalDownloaded.Load() == c.torrent.contentSize {
 			log.Printf("🔥 Download completed in %.00f\n", time.Since(c.startedAt).Minutes())
 			c.doneOnce.Do(func() {
 				close(c.done)

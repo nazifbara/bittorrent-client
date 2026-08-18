@@ -29,7 +29,7 @@ func run(torrentPath, trackerUrl string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	announceList := torrent.AnnounceList
+	announceList := torrent.announceList
 	if trackerUrl != "" {
 		announceList = [][]string{{trackerUrl}}
 	}

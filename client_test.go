@@ -8,11 +8,11 @@ import (
 
 func TestNewClientBuildsPiecesGrid(t *testing.T) {
 	torrent := &Torrent{
-		NumOfPieces:    3,
-		PieceSize:      32768,
-		FinalPieceSize: 10000,
-		Files:          []FileDict{{Length: 75536, Path: []string{"f.bin"}}},
-		NumOfBlocks:    5,
+		numOfPieces:    3,
+		pieceSize:      32768,
+		finalPieceSize: 10000,
+		files:          []FileDict{{Length: 75536, Path: []string{"f.bin"}}},
+		numOfBlocks:    5,
 	}
 
 	c := NewClient(torrent)
@@ -23,33 +23,33 @@ func TestNewClientBuildsPiecesGrid(t *testing.T) {
 	}
 
 	for i, ps := range c.piecesGrid {
-		wantSize := torrent.PieceSize
+		wantSize := torrent.pieceSize
 		if i == len(c.piecesGrid)-1 {
-			wantSize = torrent.FinalPieceSize
+			wantSize = torrent.finalPieceSize
 		}
-		if uint64(len(ps.Bytes)) != wantSize {
-			t.Fatalf("piece %d: expected buffer size %d, got %d", i, wantSize, len(ps.Bytes))
+		if uint64(len(ps.bytes)) != wantSize {
+			t.Fatalf("piece %d: expected buffer size %d, got %d", i, wantSize, len(ps.bytes))
 		}
-		if ps.PieceSize != wantSize {
-			t.Fatalf("piece %d: expected PieceSize %d, got %d", i, wantSize, ps.PieceSize)
+		if ps.pieceSize != wantSize {
+			t.Fatalf("piece %d: expected PieceSize %d, got %d", i, wantSize, ps.pieceSize)
 		}
 		wantBlocks := int(wantSize / uint64(blockSize))
 		if wantSize%uint64(blockSize) != 0 {
 			wantBlocks++
 		}
-		if ps.NumOfBlocks != wantBlocks {
-			t.Fatalf("piece %d: expected %d total blocks, got %d", i, wantBlocks, ps.NumOfBlocks)
+		if ps.numOfBlocks != wantBlocks {
+			t.Fatalf("piece %d: expected %d total blocks, got %d", i, wantBlocks, ps.numOfBlocks)
 		}
-		if ps.Done {
+		if ps.done {
 			t.Fatalf("piece %d: expected new piece to not be marked done", i)
 		}
 	}
 
-	if len(c.filesGrid) != len(torrent.Files) {
-		t.Fatalf("expected filesGrid sized to %d files, got %d", len(torrent.Files), len(c.filesGrid))
+	if len(c.filesGrid) != len(torrent.files) {
+		t.Fatalf("expected filesGrid sized to %d files, got %d", len(torrent.files), len(c.filesGrid))
 	}
-	if cap(c.queue) != int(torrent.NumOfBlocks) {
-		t.Fatalf("expected queue capacity %d, got %d", torrent.NumOfBlocks, cap(c.queue))
+	if cap(c.queue) != int(torrent.numOfBlocks) {
+		t.Fatalf("expected queue capacity %d, got %d", torrent.numOfBlocks, cap(c.queue))
 	}
 }
 

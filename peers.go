@@ -26,7 +26,7 @@ func (c *Client) connectToPeer(address *net.TCPAddr) (*Peer, error) {
 		return nil, fmt.Errorf("connection is not *net.TCPConn: %T", conn)
 	}
 
-	peer := &Peer{TCPConn: tcpConn, TCPAddr: address, Bitfield: make([]bool, c.torrent.NumOfPieces), rtt: *newRTTTracker(100)}
+	peer := &Peer{TCPConn: tcpConn, TCPAddr: address, Bitfield: make([]bool, c.torrent.numOfPieces), rtt: *newRTTTracker(100)}
 
 	return peer, nil
 }

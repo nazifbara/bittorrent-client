@@ -99,9 +99,9 @@ func parseHavePayload(b []byte) (HavePayload, error) {
 }
 
 func (c *Client) buildBlockSize(pieceIdx uint32, currentBegin uint32) uint32 {
-	totalPieceSize := uint32(c.torrent.PieceSize)
-	if pieceIdx == uint32(c.torrent.NumOfPieces-1) {
-		totalPieceSize = uint32(c.torrent.FinalPieceSize)
+	totalPieceSize := uint32(c.torrent.pieceSize)
+	if pieceIdx == uint32(c.torrent.numOfPieces-1) {
+		totalPieceSize = uint32(c.torrent.finalPieceSize)
 	}
 	rem := totalPieceSize - currentBegin
 	if rem < blockSize {

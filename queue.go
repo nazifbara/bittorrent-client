@@ -50,7 +50,7 @@ func (c *Client) shutdown() {
 func (c *Client) addPieceJobs(pieceIdx uint32) {
 	pieceState := c.piecesGrid[pieceIdx]
 	pieceState.mu.Lock()
-	total := pieceState.NumOfBlocks
+	total := pieceState.numOfBlocks
 	pieceState.mu.Unlock()
 	for i := range total {
 		offset := i * int(blockSize)
@@ -61,7 +61,7 @@ func (c *Client) addPieceJobs(pieceIdx uint32) {
 func (c *Client) AddToQueue(pieceIndex uint32, offset uint32) {
 	pieceState := c.piecesGrid[pieceIndex]
 	pieceState.mu.Lock()
-	if pieceState.Done {
+	if pieceState.done {
 		pieceState.mu.Unlock()
 		return
 	}

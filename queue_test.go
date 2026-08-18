@@ -118,7 +118,7 @@ func TestOnTimeoutIgnoresAlreadyResolvedJob(t *testing.T) {
 
 func TestAddToQueueSkipsCompletedPiece(t *testing.T) {
 	c := newTestClient(t, 4)
-	c.piecesGrid = []*PieceState{{Done: true, NumOfBlocks: 1}}
+	c.piecesGrid = []*PieceState{{done: true, numOfBlocks: 1}}
 
 	c.AddToQueue(0, 0)
 
@@ -131,7 +131,7 @@ func TestAddToQueueSkipsCompletedPiece(t *testing.T) {
 
 func TestAddPieceJobsEnqueuesEveryBlock(t *testing.T) {
 	c := newTestClient(t, 8)
-	c.piecesGrid = []*PieceState{{NumOfBlocks: 3}}
+	c.piecesGrid = []*PieceState{{numOfBlocks: 3}}
 
 	c.addPieceJobs(0)
 

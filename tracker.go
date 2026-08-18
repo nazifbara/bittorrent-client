@@ -108,13 +108,13 @@ func (c *Client) BuildAnnounceReq(connectID []byte, trackerConn *net.UDPConn) []
 	// transaction id
 	b = binary.BigEndian.AppendUint32(b, rand.Uint32())
 	// infohash
-	b = append(b, c.torrent.InfoHash[:]...)
+	b = append(b, c.torrent.infoHash[:]...)
 	// peer id
 	b = append(b, randomPeerID()...)
 	// downloaded
 	b = binary.BigEndian.AppendUint64(b, 0)
 	// left
-	b = binary.BigEndian.AppendUint64(b, c.torrent.NumOfPieces)
+	b = binary.BigEndian.AppendUint64(b, c.torrent.numOfPieces)
 	// uploaded
 	b = binary.BigEndian.AppendUint64(b, 0)
 	// event 0 none

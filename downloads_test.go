@@ -32,7 +32,7 @@ func newDownloadTestClient(t *testing.T, filesGrid []*FileState, contentSize uin
 	t.Cleanup(cancel)
 	return &Client{
 		filesGrid: filesGrid,
-		torrent:   &Torrent{ContentSize: contentSize},
+		torrent:   &Torrent{contentSize: contentSize},
 		done:      make(chan struct{}),
 		startedAt: time.Now(),
 		ctx:       ctx,

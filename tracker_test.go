@@ -83,7 +83,7 @@ func TestBuildAnnounceReq(t *testing.T) {
 	for i := range infoHash {
 		infoHash[i] = byte(i + 1)
 	}
-	c := &Client{torrent: &Torrent{InfoHash: infoHash, NumOfPieces: 42}}
+	c := &Client{torrent: &Torrent{infoHash: infoHash, numOfPieces: 42}}
 
 	connID := []byte{9, 9, 9, 9, 9, 9, 9, 9}
 	got := c.BuildAnnounceReq(connID, conn)

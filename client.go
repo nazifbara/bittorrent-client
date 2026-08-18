@@ -36,11 +36,11 @@ type pendingRequest struct {
 }
 
 type PieceState struct {
-	Bytes       []byte
-	BlocksRead  int
-	NumOfBlocks int
-	PieceSize   uint64
-	Done        bool
+	bytes       []byte
+	blocksRead  int
+	numOfBlocks int
+	pieceSize   uint64
+	done        bool
 	Received    []bool
 	mu          sync.Mutex
 }
@@ -48,9 +48,9 @@ type PieceState struct {
 func (p *PieceState) reset() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.BlocksRead = 0
-	p.Bytes = make([]byte, p.NumOfBlocks)
-	p.Done = false
+	p.blocksRead = 0
+	p.bytes = make([]byte, p.numOfBlocks)
+	p.done = false
 }
 
 type Peer struct {
@@ -107,27 +107,27 @@ type Client struct {
 func NewClient(torrent *Torrent) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	piecesGrid := make([]*PieceState, torrent.NumOfPieces)
+	piecesGrid := make([]*PieceState, torrent.numOfPieces)
 	for i := range piecesGrid {
-		pieceSize := torrent.PieceSize
-		if i == int(torrent.NumOfPieces)-1 {
-			pieceSize = torrent.FinalPieceSize
+		pieceSize := torrent.pieceSize
+		if i == int(torrent.numOfPieces)-1 {
+			pieceSize = torrent.finalPieceSize
 		}
 		numOfBlock := pieceSize / uint64(blockSize)
 		if pieceSize%uint64(blockSize) != 0 {
 			numOfBlock++
 		}
 		bytes := make([]byte, pieceSize)
-		piecesGrid[i] = &PieceState{Bytes: bytes, PieceSize: pieceSize, NumOfBlocks: int(numOfBlock)}
+		piecesGrid[i] = &PieceState{bytes: bytes, pieceSize: pieceSize, numOfBlocks: int(numOfBlock)}
 	}
 	return &Client{
 		torrent:    torrent,
 		piecesGrid: piecesGrid,
-		queue:      make(chan *Job, torrent.NumOfBlocks),
+		queue:      make(chan *Job, torrent.numOfBlocks),
 		pending:    make(map[string]*pendingRequest),
 		ctx:        ctx,
 		cancel:     cancel,
-		filesGrid:  make([]*FileState, len(torrent.Files)),
+		filesGrid:  make([]*FileState, len(torrent.files)),
 		done:       make(chan struct{}),
 	}
 }
@@ -153,19 +153,19 @@ func createFileFromPath(root string, path []string) (*os.File, error) {
 }
 
 func (c *Client) Start(annnounceList [][]string) error {
-	err := os.Mkdir(c.torrent.Name, 0755)
+	err := os.Mkdir(c.torrent.name, 0755)
 	if err != nil && !errors.Is(err, os.ErrExist) {
 		return err
 	}
 
 	fileBegin := int64(0)
-	for i, f := range c.torrent.Files {
-		file, err := createFileFromPath(c.torrent.Name, f.Path)
+	for i, f := range c.torrent.files {
+		file, err := createFileFromPath(c.torrent.name, f.Path)
 		if err != nil {
 			return err
 		}
 		if i != 0 {
-			fileBegin += c.torrent.Files[i-1].Length
+			fileBegin += c.torrent.files[i-1].Length
 		}
 		numOfBlocks := f.Length / int64(blockSize)
 

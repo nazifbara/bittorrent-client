@@ -37,35 +37,35 @@ func TestToTorrentSingleFile(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if torrent.Name != "test.txt" {
-		t.Fatalf("expected name %q, got %q", "test.txt", torrent.Name)
+	if torrent.name != "test.txt" {
+		t.Fatalf("expected name %q, got %q", "test.txt", torrent.name)
 	}
-	if torrent.ContentSize != 15 {
-		t.Fatalf("expected content size 15, got %d", torrent.ContentSize)
+	if torrent.contentSize != 15 {
+		t.Fatalf("expected content size 15, got %d", torrent.contentSize)
 	}
-	if torrent.NumOfPieces != 2 {
-		t.Fatalf("expected 2 pieces, got %d", torrent.NumOfPieces)
+	if torrent.numOfPieces != 2 {
+		t.Fatalf("expected 2 pieces, got %d", torrent.numOfPieces)
 	}
-	if torrent.PieceSize != 10 {
-		t.Fatalf("expected piece size 10, got %d", torrent.PieceSize)
+	if torrent.pieceSize != 10 {
+		t.Fatalf("expected piece size 10, got %d", torrent.pieceSize)
 	}
-	if torrent.FinalPieceSize != 5 {
-		t.Fatalf("expected final piece size 5 (15%%10), got %d", torrent.FinalPieceSize)
+	if torrent.finalPieceSize != 5 {
+		t.Fatalf("expected final piece size 5 (15%%10), got %d", torrent.finalPieceSize)
 	}
-	if len(torrent.Files) != 1 {
-		t.Fatalf("expected synthesized single file entry, got %d files", len(torrent.Files))
+	if len(torrent.files) != 1 {
+		t.Fatalf("expected synthesized single file entry, got %d files", len(torrent.files))
 	}
-	if torrent.Files[0].Length != 15 || torrent.Files[0].Path[0] != "test.txt" {
-		t.Fatalf("unexpected synthesized file entry: %+v", torrent.Files[0])
+	if torrent.files[0].Length != 15 || torrent.files[0].Path[0] != "test.txt" {
+		t.Fatalf("unexpected synthesized file entry: %+v", torrent.files[0])
 	}
 	// content size 15 is below one full block (16384): rounds up to 1 block.
-	if torrent.NumOfBlocks != 1 {
-		t.Fatalf("expected 1 block, got %d", torrent.NumOfBlocks)
+	if torrent.numOfBlocks != 1 {
+		t.Fatalf("expected 1 block, got %d", torrent.numOfBlocks)
 	}
-	if len(torrent.PieceHashes) != 2 {
-		t.Fatalf("expected 2 piece hashes, got %d", len(torrent.PieceHashes))
+	if len(torrent.pieceHashes) != 2 {
+		t.Fatalf("expected 2 piece hashes, got %d", len(torrent.pieceHashes))
 	}
-	if torrent.PieceHashes[0] != h1 || torrent.PieceHashes[1] != h2 {
+	if torrent.pieceHashes[0] != h1 || torrent.pieceHashes[1] != h2 {
 		t.Fatal("piece hashes mismatch")
 	}
 
@@ -75,8 +75,8 @@ func TestToTorrentSingleFile(t *testing.T) {
 		t.Fatalf("unexpected marshal error: %v", err)
 	}
 	wantInfoHash := sha1.Sum(buf.Bytes())
-	if torrent.InfoHash != wantInfoHash {
-		t.Fatalf("info hash mismatch: got %x, want %x", torrent.InfoHash, wantInfoHash)
+	if torrent.infoHash != wantInfoHash {
+		t.Fatalf("info hash mismatch: got %x, want %x", torrent.infoHash, wantInfoHash)
 	}
 }
 
@@ -98,14 +98,14 @@ func TestToTorrentMultiFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if torrent.ContentSize != 15 {
-		t.Fatalf("expected content size 15, got %d", torrent.ContentSize)
+	if torrent.contentSize != 15 {
+		t.Fatalf("expected content size 15, got %d", torrent.contentSize)
 	}
-	if len(torrent.Files) != 2 {
-		t.Fatalf("expected original 2 files preserved, got %d", len(torrent.Files))
+	if len(torrent.files) != 2 {
+		t.Fatalf("expected original 2 files preserved, got %d", len(torrent.files))
 	}
-	if torrent.Files[1].Path[0] != "sub" || torrent.Files[1].Path[1] != "b.txt" {
-		t.Fatalf("unexpected file path: %+v", torrent.Files[1].Path)
+	if torrent.files[1].Path[0] != "sub" || torrent.files[1].Path[1] != "b.txt" {
+		t.Fatalf("unexpected file path: %+v", torrent.files[1].Path)
 	}
 }
 
@@ -173,11 +173,11 @@ func TestOpenTorrentValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if torrent.Name != "file.bin" {
-		t.Fatalf("expected name %q, got %q", "file.bin", torrent.Name)
+	if torrent.name != "file.bin" {
+		t.Fatalf("expected name %q, got %q", "file.bin", torrent.name)
 	}
-	if torrent.ContentSize != 4 {
-		t.Fatalf("expected content size 4, got %d", torrent.ContentSize)
+	if torrent.contentSize != 4 {
+		t.Fatalf("expected content size 4, got %d", torrent.contentSize)
 	}
 }
 
@@ -211,7 +211,7 @@ func TestOpenTorrentSwallowsToTorrentError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openTorrent currently swallows ToTorrent errors, expected nil error, got %v", err)
 	}
-	if torrent.Name != "" {
+	if torrent.name != "" {
 		t.Fatalf("expected zero-value Torrent when ToTorrent fails internally, got %+v", torrent)
 	}
 }
