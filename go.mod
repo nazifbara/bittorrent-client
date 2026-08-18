@@ -1,4 +1,4 @@
-module github.com/nazifbara/zifbittorent
+module github.com/nazifbara/ziftorrent
 
 go 1.26.5
 
