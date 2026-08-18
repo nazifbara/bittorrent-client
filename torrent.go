@@ -62,6 +62,7 @@ func (bt BencodeTorrent) ToTorrent() (Torrent, error) {
 	contentSize := 0
 	if len(bt.Info.Files) == 0 {
 		contentSize = int(bt.Info.Length)
+		bt.Info.Files = []FileDict{{Length: int64(contentSize), Path: []string{bt.Info.Name}}}
 	} else {
 		for _, file := range bt.Info.Files {
 			contentSize += int(file.Length)
