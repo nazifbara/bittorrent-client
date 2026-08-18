@@ -15,7 +15,7 @@ func TestNewClientBuildsPiecesGrid(t *testing.T) {
 		numOfBlocks:    5,
 	}
 
-	c := NewClient(torrent)
+	c := newClient(torrent)
 	t.Cleanup(c.cancel)
 
 	if len(c.piecesGrid) != 3 {

@@ -104,7 +104,7 @@ type Client struct {
 	wg              sync.WaitGroup
 }
 
-func NewClient(torrent *Torrent) *Client {
+func newClient(torrent *Torrent) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	piecesGrid := make([]*PieceState, torrent.numOfPieces)

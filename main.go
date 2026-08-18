@@ -33,7 +33,7 @@ func run(torrentPath, trackerUrl string) (int, error) {
 	if trackerUrl != "" {
 		announceList = [][]string{{trackerUrl}}
 	}
-	client := NewClient(torrent)
+	client := newClient(torrent)
 	var clientErr error
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	go func() {
