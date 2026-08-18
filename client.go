@@ -136,15 +136,21 @@ func createFileFromPath(root string, path []string) (*os.File, error) {
 	builder := strings.Builder{}
 	builder.WriteString(root)
 	for i, p := range path {
-		fmt.Fprintf(&builder, "/%s", p)
-		if i != len(path)-1 {
+		if len(path) > 1 {
+			fmt.Fprintf(&builder, "/%s", p)
+		}
+		fmt.Fprintf(&builder, "%s", p)
+
+		if i != len(path)-1 && len(path) > 1 {
 			if err := os.Mkdir(builder.String(), 0755); err != nil && !errors.Is(err, os.ErrExist) {
 				return &os.File{}, err
 			}
 			continue
 		}
+
 		file, err := os.OpenFile(builder.String(), os.O_WRONLY|os.O_CREATE, 0666)
 		if err != nil {
+			log.Fatal(err)
 			return &os.File{}, nil
 		}
 		return file, nil
@@ -153,14 +159,18 @@ func createFileFromPath(root string, path []string) (*os.File, error) {
 }
 
 func (c *Client) Start(annnounceList [][]string) error {
-	err := os.Mkdir(c.torrent.name, 0755)
-	if err != nil && !errors.Is(err, os.ErrExist) {
-		return err
+	parrentFolderName := ""
+	if len(c.torrent.files) > 1 {
+		err := os.Mkdir(c.torrent.name, 0755)
+		if err != nil && !errors.Is(err, os.ErrExist) {
+			return err
+		}
+		parrentFolderName = c.torrent.name
 	}
 
 	fileBegin := int64(0)
 	for i, f := range c.torrent.files {
-		file, err := createFileFromPath(c.torrent.name, f.Path)
+		file, err := createFileFromPath(parrentFolderName, f.Path)
 		if err != nil {
 			return err
 		}
