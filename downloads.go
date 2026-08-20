@@ -4,7 +4,6 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"slices"
 	"time"
 )
@@ -144,21 +143,18 @@ func (c *Client) onHave(peer *Peer, msg Message) {
 }
 
 func (c *Client) onUnchoke(peer *Peer) {
-	// log.Printf("✉️ unchoke by %v\n", peer.TCPAddr)
 	peer.mu.Lock()
 	defer peer.mu.Unlock()
 	peer.IsChoke = false
 }
 
 func (c *Client) onChoke(peer *Peer) {
-	// log.Printf("✉️ choke by %v\n", peer.TCPAddr)
 	peer.mu.Lock()
 	go peer.mu.Unlock()
 	peer.IsChoke = true
 }
 
 func (c *Client) onBitfield(peer *Peer, msg Message) {
-	// log.Printf("✉️ received %v bitfield\n", peer.TCPAddr)
 	payload := parseBitfieldPayload(msg.payload)
 	peer.mu.Lock()
 	peer.Bitfield = payload.Bitfield
@@ -196,11 +192,11 @@ func (c *Client) onBlockReceived(peer *Peer, msg Message) {
 	pieceState.done = pieceState.blocksRead == pieceState.numOfBlocks
 	pieceState.mu.Unlock()
 	c.totalDownloaded.Add(int64(len(payload.Block)))
-	log.Printf("🍰 Progress %s / %s\n", stringByteSize(int64(c.totalDownloaded.Load())), stringByteSize(int64(c.torrent.contentSize)))
+	fmt.Printf("🍰 Progress %s / %s\n", stringByteSize(int64(c.totalDownloaded.Load())), stringByteSize(int64(c.torrent.contentSize)))
 	if pieceState.done {
 		isValid := sha1.Sum(pieceState.bytes) == c.torrent.pieceHashes[payload.Index]
 		if !isValid {
-			log.Printf("⚠️ Re-downloading piece %d due to invalid\n", payload.Index)
+			fmt.Printf("⚠️ Re-downloading piece %d due to invalid\n", payload.Index)
 			pieceState.reset()
 			c.totalDownloaded.Store(c.totalDownloaded.Load() - int64(pieceState.pieceSize))
 			c.addPieceJobs(pr.job.index)
@@ -213,7 +209,7 @@ func (c *Client) onBlockReceived(peer *Peer, msg Message) {
 	go func(data []byte) {
 		err := c.writeToFile(payload.Index, payload.Begin, data)
 		if err != nil {
-			log.Println("❌ Couldn't write to file")
+			fmt.Println("❌ Couldn't write to file")
 			c.doneOnce.Do(func() {
 				close(c.done)
 			})
@@ -247,11 +243,11 @@ func (c *Client) writeAtGlobal(globalBegin int64, data []byte) error {
 		}
 		fs.blocksWrote++
 		if fs.blocksWrote == fs.numOfBlocks {
-			log.Printf("✅ %s completed", fs.name)
+			fmt.Printf("✅ %s completed\n", fs.name)
 		}
 		fs.mu.Unlock()
 		if c.totalDownloaded.Load() == int64(c.torrent.contentSize) {
-			log.Printf("🔥 Download completed in %v\n", time.Since(c.startedAt))
+			fmt.Printf("🔥 Download completed in %v\n", time.Since(c.startedAt))
 			c.doneOnce.Do(func() {
 				close(c.done)
 			})

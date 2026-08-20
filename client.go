@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -205,6 +204,6 @@ func (c *Client) Start(annnounceList [][]string) error {
 	}
 	c.peerAddresses = addresses
 	c.startedAt = time.Now()
-	log.Println("⬇️ Downloading...")
+	fmt.Println("⬇️ Downloading...")
 	return c.download()
 }
