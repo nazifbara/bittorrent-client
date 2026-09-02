@@ -5,16 +5,18 @@ connections, a hand-rolled UDP tracker client, and a concurrent piece-download
 engine. No third-party torrent library is used for any protocol logic — the only
 dependency is `bencode-go`, used strictly for parsing `.torrent` file metadata.
 
-Everything else — the peer wire protocol, the UDP tracker handshake, piece
-selection, block-level request scheduling, adaptive timeout/retry logic, and
-disk I/O across multi-file torrents — is implemented directly against the
-[BitTorrent protocol spec](https://www.bittorrent.org/beps/bep_0003.html).
+## Motivation
 
-## Highlights
+Most "build your own torrent client" projects wrap an existing library and call
+it a day. Ziftorrent implements the [BitTorrent protocol spec](https://www.bittorrent.org/beps/bep_0003.html)
+directly — the peer wire protocol, the UDP tracker handshake, piece selection,
+block-level request scheduling, adaptive timeout/retry logic, and disk I/O across
+multi-file torrents are all written from scratch, as a way to work with Go's
+concurrency primitives (goroutines, channels, `context.Context`) on a real,
+non-trivial network protocol rather than a toy problem.
 
-- **Protocol implemented from scratch**: full peer wire protocol (handshake,
-  `choke`/`unchoke`/`have`/`bitfield`/`piece`/`request`) and a UDP tracker client
-  built directly on raw sockets — no torrent library in the critical path.
+A few things worth knowing before diving in:
+
 - **Concurrent-by-design download engine**: one reader + one worker goroutine per
   peer, a shared job queue, and an O(1) request-matching map, coordinated end-to-end
   with `context.Context` for clean shutdown (including forcing blocked reads to
@@ -26,73 +28,44 @@ disk I/O across multi-file torrents — is implemented directly against the
 - **Correct multi-file handling**: blocks are streamed to disk as they arrive and
   transparently split across file boundaries when a block straddles two files in
   the torrent's logical byte stream.
-- **Solid test coverage**: 10 test files covering wire protocol encoding, tracker
-  request/response format, RTT math, queue/timeout/shutdown behavior, and disk
-  writes across file boundaries.
 
-## What it does
+## Quick Start
 
-Given a `.torrent` file, the client:
+Requires Go installed locally (see [go.dev/dl](https://go.dev/dl/)).
 
-1. Parses the bencoded metadata (`torrent.go`) and computes the info hash, piece
-   layout, and per-file byte ranges.
-2. Announces to a UDP tracker to get a peer list (`tracker.go`).
-3. Connects to peers over TCP and performs the BitTorrent handshake (`handshake.go`).
-4. Requests, receives, and validates piece data concurrently across all connected
-   peers, writing completed blocks straight to disk (`downloads.go`).
-5. Exits once every byte of the torrent's content has been written and verified.
+```sh
+git clone https://github.com/<your-username>/ziftorrent.git
+cd ziftorrent
+go run . -f path/to/file.torrent
+```
 
-## Architecture
+That's it — the client parses the torrent, announces to its tracker, connects to
+peers, and starts downloading. Downloaded files are written under a directory
+named after the torrent (`Torrent.Name`), mirroring the file paths declared in
+the torrent's info dictionary.
 
-### Concurrency model
+## Usage
 
-Each peer gets its own goroutines:
+```sh
+go run . -f path/to/file.torrent
+```
 
-- **`readPeerMessages`** — blocks on `peer.Read`, parses the length-prefixed wire
-  protocol, and dispatches messages (`choke`, `unchoke`, `have`, `bitfield`, `piece`)
-  to handlers.
-- **`runPeerWorker`** — pulls jobs (piece/block requests) off a single shared,
-  buffered channel (`Client.queue`) and sends the corresponding `request` message to
-  that peer, provided the peer isn't choking and actually has the piece.
+Flags:
 
-There is no polling loop in the request path. Instead:
+| Flag | Description |
+|---|---|
+| `-f` | Path to the `.torrent` file (required) |
+| `-t` | Override tracker URL instead of using the torrent's own announce list |
 
-- A block request arms a `time.AfterFunc` timer sized to the current measured RTT
-  (see below). If the timer fires before the block arrives, the job is pushed back
-  onto the queue for another peer to pick up.
-- If the block arrives first, the timer is cancelled and the round-trip time is fed
-  into that peer's rolling RTT average.
-- In-flight requests are tracked in a single map (`Client.pending`, keyed by
-  `"pieceIndex:begin"`) rather than scanned linearly, so matching an incoming block
-  to its request is O(1).
+The client exits once every byte of the torrent's content has been written and
+verified against the torrent's SHA-1 piece hashes.
 
-Shutdown is coordinated with `context.Context`: cancelling `Client.ctx` stops every
-peer worker and — via a small per-peer watcher goroutine — forces any blocked
-`peer.Read()` to return by closing the connection, so nothing is left hanging on I/O
-that a context alone can't interrupt.
+## Contributing
 
-### Adaptive request timeout
+Contributions and issues are welcome. This section is a map of the codebase and
+the open work, for anyone looking to dig in.
 
-`rtt.go` maintains a capped, windowed average of observed round-trip times
-(`rttTracker`, one per peer). The re-request timeout for a given peer is derived
-from its own recent average RTT (`avg * 4`, clamped to `[2s, 20s]`) rather than a
-single fixed constant for every peer — a peer with a slow but real 800ms RTT won't
-be timed out and re-requested as aggressively as one with a healthy 50ms RTT.
-
-### Piece and file layout
-
-- `PieceState` tracks a piece's in-memory buffer, which blocks have been received
-  (`Received []bool`, used to reject duplicate deliveries without double-counting),
-  and whether the piece is complete.
-- Blocks are written to disk as soon as they arrive (not batched per-piece); a
-  completed piece's hash is verified against the torrent's SHA-1 piece hash list, and
-  its in-memory buffer is released.
-- For multi-file torrents, `FileState` entries describe each file's offset in the
-  logical concatenated byte stream. `writeAtGlobal` translates a global piece/block
-  offset into one or more `WriteAt` calls, splitting a single block's write across a
-  file boundary if the block happens to straddle two files.
-
-## Project layout
+### Project layout
 
 | File | Responsibility |
 |---|---|
@@ -108,23 +81,34 @@ be timed out and re-requested as aggressively as one with a healthy 50ms RTT.
 | `messages.go` | Wire protocol message encode/decode |
 | `utils.go` | Bit packing, peer ID generation, retry helper |
 
-## Usage
+### Architecture notes
 
-```sh
-go run . -f path/to/file.torrent
-```
+**Concurrency model.** Each peer gets its own goroutines: `readPeerMessages`
+blocks on `peer.Read`, parses the length-prefixed wire protocol, and dispatches
+messages (`choke`, `unchoke`, `have`, `bitfield`, `piece`) to handlers.
+`runPeerWorker` pulls jobs off a single shared, buffered channel (`Client.queue`)
+and sends the corresponding `request` message to that peer, provided it isn't
+choking and actually has the piece. There is no polling loop in the request
+path: a block request arms a `time.AfterFunc` timer sized to the peer's current
+measured RTT, and if it fires before the block arrives, the job is pushed back
+onto the queue for another peer. In-flight requests are tracked in a single map
+(`Client.pending`, keyed by `"pieceIndex:begin"`) for O(1) matching. Shutdown is
+coordinated with `context.Context`: cancelling `Client.ctx` stops every peer
+worker and, via a small per-peer watcher goroutine, forces any blocked
+`peer.Read()` to return by closing the connection.
 
-Flags:
+**Piece and file layout.** `PieceState` tracks a piece's in-memory buffer, which
+blocks have been received (`Received []bool`, to reject duplicate deliveries
+without double-counting), and whether the piece is complete. Blocks are written
+to disk as soon as they arrive rather than batched per-piece; a completed
+piece's hash is verified against the torrent's SHA-1 piece hash list, and its
+in-memory buffer is released. For multi-file torrents, `FileState` entries
+describe each file's offset in the logical concatenated byte stream, and
+`writeAtGlobal` translates a global piece/block offset into one or more
+`WriteAt` calls, splitting a single block's write across a file boundary if it
+straddles two files.
 
-| Flag | Description |
-|---|---|
-| `-f` | Path to the `.torrent` file (required) |
-| `-t` | Override tracker URL instead of using the torrent's own announce list |
-
-Downloaded files are written under a directory named after the torrent (`Torrent.Name`),
-mirroring the file paths declared in the torrent's info dictionary.
-
-## Tests
+### Running tests
 
 ```sh
 go test ./...
@@ -143,11 +127,11 @@ go test ./...
 | `downloads_test.go` | Disk writes, including multi-file boundary splitting |
 | `peers_test.go` | Peer lookup by address |
 
-## Roadmap
+### Good areas to contribute
 
 The core download path — parsing, tracker communication, peer wire protocol,
 concurrent piece retrieval, and multi-file disk writes — is complete and tested.
-Planned next steps to round it out into a fully-featured client:
+Open items if you want to send a PR:
 
 - **HTTP tracker + DHT support**, alongside the existing UDP tracker client.
 - **Resume support** — persist completed-piece state to disk so interrupted
