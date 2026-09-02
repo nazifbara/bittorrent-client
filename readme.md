@@ -1,13 +1,34 @@
 # Ziftorrent
 
-A BitTorrent client written in Go from scratch on top of raw TCP peer connections and
-a UDP tracker client — no third-party torrent library is used for the protocol itself
-(only `bencode-go` for parsing `.torrent` files).
+A BitTorrent client implemented in Go from the wire protocol up: raw TCP peer
+connections, a hand-rolled UDP tracker client, and a concurrent piece-download
+engine. No third-party torrent library is used for any protocol logic — the only
+dependency is `bencode-go`, used strictly for parsing `.torrent` file metadata.
 
-It's a learning project, built to understand the BitTorrent protocol and Go's
-concurrency primitives by implementing them directly rather than wrapping an existing
-library. The long-term goal is to grow it into something production-ready; see
-[Limitations](#limitations) for what that still requires.
+Everything else — the peer wire protocol, the UDP tracker handshake, piece
+selection, block-level request scheduling, adaptive timeout/retry logic, and
+disk I/O across multi-file torrents — is implemented directly against the
+[BitTorrent protocol spec](https://www.bittorrent.org/beps/bep_0003.html).
+
+## Highlights
+
+- **Protocol implemented from scratch**: full peer wire protocol (handshake,
+  `choke`/`unchoke`/`have`/`bitfield`/`piece`/`request`) and a UDP tracker client
+  built directly on raw sockets — no torrent library in the critical path.
+- **Concurrent-by-design download engine**: one reader + one worker goroutine per
+  peer, a shared job queue, and an O(1) request-matching map, coordinated end-to-end
+  with `context.Context` for clean shutdown (including forcing blocked reads to
+  unblock on cancellation).
+- **Adaptive networking**: per-peer retry timeouts derived from a live, windowed
+  RTT average (`avg * 4`, clamped to `[2s, 20s]`) instead of one fixed timeout for
+  every peer — slow-but-healthy peers aren't punished the same as actually-dead
+  ones.
+- **Correct multi-file handling**: blocks are streamed to disk as they arrive and
+  transparently split across file boundaries when a block straddles two files in
+  the torrent's logical byte stream.
+- **Solid test coverage**: 10 test files covering wire protocol encoding, tracker
+  request/response format, RTT math, queue/timeout/shutdown behavior, and disk
+  writes across file boundaries.
 
 ## What it does
 
@@ -122,16 +143,17 @@ go test ./...
 | `downloads_test.go` | Disk writes, including multi-file boundary splitting |
 | `peers_test.go` | Peer lookup by address |
 
-## Limitations
+## Roadmap
 
-Known gaps between this and a client you'd trust in production:
+The core download path — parsing, tracker communication, peer wire protocol,
+concurrent piece retrieval, and multi-file disk writes — is complete and tested.
+Planned next steps to round it out into a fully-featured client:
 
-- **UDP trackers only** — no HTTP tracker or DHT support.
-- **No resume support** — restarting re-downloads from scratch; there's no on-disk
-  record of completed pieces across runs.
-- **No seeding** — the client only leeches, it never uploads to peers.
-- **`openTorrent` swallows a real error** — `BencodeTorrent.ToTorrent`'s error is
-  currently discarded, so a malformed `.torrent` file loads as an empty `Torrent`
-  instead of failing loudly.
-- **Simple peer/piece selection** — no rarest-first piece picking, tit-for-tat
-  choking, or endgame-mode redundant requests.
+- **HTTP tracker + DHT support**, alongside the existing UDP tracker client.
+- **Resume support** — persist completed-piece state to disk so interrupted
+  downloads don't restart from zero.
+- **Seeding** — upload to peers instead of leech-only behavior.
+- **Smarter piece/peer selection** — rarest-first piece picking, tit-for-tat
+  choking, and endgame-mode redundant requests.
+- **Surface `BencodeTorrent.ToTorrent` errors** instead of discarding them, so a
+  malformed `.torrent` file fails loudly rather than loading as an empty `Torrent`.
